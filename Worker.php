@@ -136,7 +136,7 @@ class Worker
         // 初始化环境变量
         self::init();
         // 解析命令
-//        self::parseCommand();
+        self::parseCommand();
 //        // 尝试以守护进程模式运行
 //        self::daemonize();
 //        // 初始化所有worker实例，主要是监听端口
@@ -209,6 +209,135 @@ class Worker
 //        self::setProcessTitle('WorkerMan: master process  start_file=' . self::$_startFile);
 
     }
-    
+
+
+    /**
+     * 解析运行命令
+     * php yourfile.php start | stop | restart | reload | status
+     * @return void
+     */
+    public static function parseCommand()
+    {
+        // 检查运行命令的参数
+        global $argv;
+        $start_file = $argv[0];
+        if(!isset($argv[1]))
+        {
+            exit("Usage: php yourfile.php {start|stop|restart|reload|status}\n");
+        }
+
+        // 命令
+        $command = trim($argv[1]);
+
+        // 子命令，目前只支持-d
+        $command2 = isset($argv[2]) ? $argv[2] : '';
+
+        // 记录日志
+        $mode = '';
+        if($command === 'start')
+        {
+            if($command2 === '-d')
+            {
+                $mode = 'in DAEMON mode';
+            }
+            else
+            {
+                $mode = 'in DEBUG mode';
+            }
+        }
+
+//未实现        self::log("Workerman[$start_file] $command $mode");
+
+        // 检查主进程是否在运行
+        $master_pid = @file_get_contents(self::$pidFile);
+        $master_is_alive = $master_pid && @posix_kill($master_pid, 0);
+        if($master_is_alive)
+        {
+            if($command === 'start')
+            {
+                self::log("Workerman[$start_file] is running");
+            }
+        }
+        elseif($command !== 'start' && $command !== 'restart')
+        {
+            self::log("Workerman[$start_file] not run");
+        }
+
+        // 根据命令做相应处理
+        switch($command)
+        {
+            // 启动 workerman
+            case 'start':
+                if($command2 === '-d')
+                {
+                    Worker::$daemonize = true;
+                }
+                break;
+            /*// 显示 workerman 运行状态
+            case 'status':
+                // 尝试删除统计文件，避免脏数据
+                if(is_file(self::$_statisticsFile))
+                {
+                    @unlink(self::$_statisticsFile);
+                }
+                // 向主进程发送 SIGUSR2 信号 ，然后主进程会向所有子进程发送 SIGUSR2 信号
+                // 所有进程收到 SIGUSR2 信号后会向 $_statisticsFile 写入自己的状态
+                posix_kill($master_pid, SIGUSR2);
+                // 睡眠100毫秒，等待子进程将自己的状态写入$_statisticsFile指定的文件
+                usleep(100000);
+                // 展示状态
+                readfile(self::$_statisticsFile);
+                exit(0);
+            // 重启 workerman
+            case 'restart':
+                // 停止 workeran
+            case 'stop':
+                self::log("Workerman[$start_file] is stoping ...");
+                // 想主进程发送SIGINT信号，主进程会向所有子进程发送SIGINT信号
+                $master_pid && posix_kill($master_pid, SIGINT);
+                // 如果 $timeout 秒后主进程没有退出则展示失败界面
+                $timeout = 5;
+                $start_time = time();
+                while(1)
+                {
+                    // 检查主进程是否存活
+                    $master_is_alive = $master_pid && posix_kill($master_pid, 0);
+                    if($master_is_alive)
+                    {
+                        // 检查是否超过$timeout时间
+                        if(time() - $start_time >= $timeout)
+                        {
+                            self::log("Workerman[$start_file] stop fail");
+                            exit;
+                        }
+                        usleep(10000);
+                        continue;
+                    }
+                    self::log("Workerman[$start_file] stop success");
+                    // 是restart命令
+                    if($command === 'stop')
+                    {
+                        exit(0);
+                    }
+                    // -d 说明是以守护进程的方式启动
+                    if($command2 === '-d')
+                    {
+                        Worker::$daemonize = true;
+                    }
+                    break;
+                }
+                break;
+            // 平滑重启 workerman
+            case 'reload':
+                posix_kill($master_pid, SIGUSR1);
+                self::log("Workerman[$start_file] reload");
+                exit;*/
+            // 未知命令
+            default :
+                exit("Usage: php yourfile.php {start|stop|restart|reload|status}\n");
+        }
+    }
+
+
 
 }
