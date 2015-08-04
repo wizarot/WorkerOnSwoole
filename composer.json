@@ -1,0 +1,32 @@
+{
+    "name"  : "wizarot/workerOnSwoole",
+    "type"  : "project",
+    "keywords": ["event-loop", "asynchronous"],
+    "homepage": "",
+    "license" : "MIT",
+    "description": "may be...",
+    "authors" : [
+        {
+            "name"      : "wizarot",
+            "email"     : "wizarot@gmail.com",
+            "homepage"  : "https://github.com/wizarot",
+            "role": "Developer"
+        }
+    ],
+    "support" : {
+        "email" : "",
+        "issues": "",
+        "forum" : "",
+        "wiki"  : "",
+        "source": ""
+    },
+    "require": {
+        "php": ">=5.3",
+        "ext-sockets": "*",
+        "ext-swoole":">=1.7.5"
+    },
+    "autoload": {
+        "psr-4": {"Workerman\\": "./"}
+    },
+    "minimum-stability":"dev"
+}
