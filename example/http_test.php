@@ -21,6 +21,6 @@ $http_worker->onMessage = function($connection, $data)
     // 向浏览器发送hello world
     $connection->send('hello world');
 };
-
+ 
 // 运行worker
 Worker::runAll();
