@@ -68,11 +68,17 @@ class Worker
     const MAX_UDP_PACKEG_SIZE = 65535;
 
     /**
+     * swoole生成的服务器实际对象
+     * @var obj
+     */
+    public $server;
+
+    /**
      * socket名称，包括应用层协议+ip+端口号，在初始化worker时设置
      * 值类似 http://0.0.0.0:80
      * @var string
      */
-    protected $_socketName = '';
+    public static $socketName = '';
 
     /**
      * 当前worker实例初始化目录位置，用于设置应用自动加载的根目录
@@ -104,6 +110,13 @@ class Worker
     public static $logFile = '';
 
     /**
+     * 是否以守护进程的方式运行。运行start时加上-d参数会自动以守护进程方式运行
+     * 例如 php start.php start -d
+     * @var bool
+     */
+    public static $daemonize = false;
+
+    /**
      * 当前worker状态
      * @var int
      */
@@ -114,10 +127,11 @@ class Worker
      * 统计的内容包括 WOS启动的时间戳及每组worker进程的退出次数及退出状态码
      * @var array
      */
-    protected static $_globalStatistics = array(
-        'start_timestamp' => 0,
-        'worker_exit_info' => array()
-    );
+    protected static $_globalStatistics
+        = array(
+            'start_timestamp'  => 0,
+            'worker_exit_info' => array(),
+        );
 
     /**
      * 运行 status 命令时用于保存结果的文件名
@@ -125,34 +139,58 @@ class Worker
      */
     protected static $_statisticsFile = '';
 
+    /**
+     * 设置worker number 处理器数量
+     * @var int
+     */
+    public $count = 1;
+
+    /*
+     * 生成的回调方法
+     */
+    public $callbacks = array();
 
 
     /**
      * 运行所有worker实例
      * @return void
      */
-    public static function runAll()
+    public function runAll()
     {
         // 初始化环境变量
-        self::init();
+        self::init ();
         // 解析命令
-        self::parseCommand();
+        self::parseCommand ();
 //        // 尝试以守护进程模式运行
 //        self::daemonize();
 //        // 初始化所有worker实例，主要是监听端口
-//        self::initWorkers();
+//        $this->initWorkers();
 //        //  初始化所有信号处理函数
 //        self::installSignal();
 //        // 保存主进程pid
 //        self::saveMasterPid();
 //        // 创建子进程（worker进程）并运行
 //        self::forkWorkers();
-//        // 展示启动界面
-//        self::displayUI();
+
+
+        //根据配置选择并初始化worker对象
+        $this->initWorkers ();
+        //设置运行参数
+        $this->setParams ();
+        //设置回调
+        $this->setCallbacks ();
+        // 展示启动界面
+        self::displayUI();
+        //启动服务器
+        $this->server->start();
+
+//
 //        // 尝试重定向标准输入输出
 //        self::resetStd();
 //        // 监控所有子进程（worker进程）
 //        self::monitorWorkers();
+
+        //
     }
 
     /**
@@ -164,13 +202,13 @@ class Worker
     public function __construct($socket_name = '', $context_option = array())
     {
         // 获得实例化文件路径，用于自动加载设置根目录
-        $backrace = debug_backtrace();
-        $this->_appInitPath = dirname($backrace[0]['file']);
+        $backrace           = debug_backtrace ();
+        $this->_appInitPath = dirname ($backrace[0]['file']);
 
         // 设置socket上下文
-        if($socket_name)
-        {
-            $this->_socketName = $socket_name;
+        if ($socket_name) {
+            self::$socketName = $socket_name;
+
 //            if(!isset($context_option['socket']['backlog']))
 //            {
 //                $context_option['socket']['backlog'] = self::DEFAUL_BACKLOG;
@@ -188,23 +226,21 @@ class Worker
     public static function init()
     {
         // 如果没设置$pidFile，则生成默认值
-        if(empty(self::$pidFile))
-        {
-            $backtrace = debug_backtrace();
-            self::$_startFile = $backtrace[count($backtrace)-1]['file'];
-            self::$pidFile = sys_get_temp_dir()."/workerOnSwoole.".str_replace('/', '_', self::$_startFile).".pid";
+        if (empty(self::$pidFile)) {
+            $backtrace        = debug_backtrace ();
+            self::$_startFile = $backtrace[count ($backtrace) - 1]['file'];
+            self::$pidFile    = sys_get_temp_dir () . "/workerOnSwoole." . str_replace ('/', '_', self::$_startFile) . ".pid";
         }
         // 没有设置日志文件，则生成一个默认值
-        if(empty(self::$logFile))
-        {
+        if (empty(self::$logFile)) {
             self::$logFile = __DIR__ . '/tmp/workeOnSwoole.log';
         }
         // 标记状态为启动中
         self::$_status = self::STATUS_STARTING;
         // 启动时间戳
-        self::$_globalStatistics['start_timestamp'] = time();
+        self::$_globalStatistics['start_timestamp'] = time ();
         // 设置status文件位置
-        self::$_statisticsFile = sys_get_temp_dir().'/workerOnSwoole.status';
+        self::$_statisticsFile = sys_get_temp_dir () . '/workerOnSwoole.status';
         // 尝试设置进程名称（需要php>=5.5或者安装了proctitle扩展）
 //        self::setProcessTitle('WorkerMan: master process  start_file=' . self::$_startFile);
 
@@ -221,27 +257,22 @@ class Worker
         // 检查运行命令的参数
         global $argv;
         $start_file = $argv[0];
-        if(!isset($argv[1]))
-        {
+        if (!isset($argv[1])) {
             exit("Usage: php yourfile.php {start|stop|restart|reload|status}\n");
         }
 
         // 命令
-        $command = trim($argv[1]);
+        $command = trim ($argv[1]);
 
         // 子命令，目前只支持-d
         $command2 = isset($argv[2]) ? $argv[2] : '';
 
         // 记录日志
         $mode = '';
-        if($command === 'start')
-        {
-            if($command2 === '-d')
-            {
+        if ($command === 'start') {
+            if ($command2 === '-d') {
                 $mode = 'in DAEMON mode';
-            }
-            else
-            {
+            } else {
                 $mode = 'in DEBUG mode';
             }
         }
@@ -249,27 +280,21 @@ class Worker
 //未实现        self::log("Workerman[$start_file] $command $mode");
 
         // 检查主进程是否在运行
-        $master_pid = @file_get_contents(self::$pidFile);
-        $master_is_alive = $master_pid && @posix_kill($master_pid, 0);
-        if($master_is_alive)
-        {
-            if($command === 'start')
-            {
-                self::log("Workerman[$start_file] is running");
+        $master_pid      = @file_get_contents (self::$pidFile);
+        $master_is_alive = $master_pid && @posix_kill ($master_pid, 0);
+        if ($master_is_alive) {
+            if ($command === 'start') {
+                self::log ("Workerman[$start_file] is running");
             }
-        }
-        elseif($command !== 'start' && $command !== 'restart')
-        {
-            self::log("Workerman[$start_file] not run");
+        } elseif ($command !== 'start' && $command !== 'restart') {
+            self::log ("Workerman[$start_file] not run");
         }
 
         // 根据命令做相应处理
-        switch($command)
-        {
+        switch ($command) {
             // 启动 workerman
             case 'start':
-                if($command2 === '-d')
-                {
+                if ($command2 === '-d') {
                     Worker::$daemonize = true;
                 }
                 break;
@@ -338,6 +363,105 @@ class Worker
         }
     }
 
+    /**
+     * 根据配置初始化worker对象
+     * @throws Exception
+     */
+    public function initWorkers()
+    {
+
+        if (!self::$socketName) {
+            return;
+        }
+        // 获得应用层通讯协议以及监听的地址
+        $url = parse_url (self::$socketName);
+
+        if (!isset($url['scheme'])) {
+            throw new Exception("scheme not exist");
+        }
+        if (!isset($url['host'])) {
+            throw new Exception("host not exist");
+        }
+        if (!isset($url['port'])) {
+            throw new Exception("port not exist");
+        }
+
+        // 如果有指定应用层协议，则检查对应的协议类是否存在
+        switch ($url['scheme']) {
+            case 'http':
+                $this->server = new \swoole_http_server($url['host'], $url['port']);
+                break;
+            default:
+                break;
+        }
+
+
+    }
+
+    /**
+     * 根据配置项目,对服务器对象进行设置运行参数
+     */
+    public function setParams()
+    {
+        // 很多,回头都写在这里,方便开发者掉用
+        $config = array(
+            'worker_num' => $this->count,
+            'daemonize'  => self::$daemonize,
+        );
+
+        $this->server->set ($config);
+    }
+
+    /**
+     * 这里通过魔术方法来处理callback的设置
+     *
+     **/
+    function __set($property, $value)
+    {
+        if (strpos ($property, 'on') !== false) {
+            // 处理绑定的on事件
+            $name                   = strtolower (ltrim ($property, 'on'));
+            $this->callbacks[$name] = $value;
+        }
+
+    }
+
+    /**
+     * 设定之前注册的回调函数
+     */
+    function setCallbacks()
+    {
+        foreach ($this->callbacks as $env => $func) {
+            $this->server->on ($env, $func);
+        }
+
+        unset($this->callbacks);//注册后就没用了.释放内存
+    }
+
+    /**
+     * 展示启动界面
+     * @return void
+     */
+    protected static function displayUI()
+    {
+        echo "\033[1A\n\033[K-----------------------\033[47;30m WORKERMAN \033[0m-----------------------------\n\033[0m";
+        echo 'Workerman version:' , Worker::VERSION , "          PHP version:",PHP_VERSION,"\n";
+        $listen = self::$socketName;
+        echo "Server listen  {$listen}\n";
+
+        if(self::$daemonize)
+        {
+            global $argv;
+            $start_file = $argv[0];
+            echo "Input \"php $start_file stop\" to quit. Start success.\n";
+        }
+        else
+        {
+            echo "Press Ctrl-C to quit.\n";
+        }
+
+        echo "------------------------\033[47;30m WORKERS \033[0m-------------------------------\n";
+    }
 
 
 }
