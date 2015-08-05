@@ -92,7 +92,13 @@ class Worker
      * 注意 此属性一般不必手动设置，默认会放到php临时目录中
      * @var string
      */
-    public static $pidFile = '';
+    public static $pidFile = '/tmp/workerOnSwoole.pid';
+
+    /**
+     * pid 主进程id
+     * @var string
+     */
+    public static $_masterPid = '';
 
     /**
      * 启动的全局入口文件
@@ -180,9 +186,10 @@ class Worker
         //设置回调
         $this->setCallbacks ();
         // 展示启动界面
-        self::displayUI();
+        self::displayUI ();
         //启动服务器
-        $this->server->start();
+        self::$_globalStatistics['start_timestamp'] = time ();
+        $this->server->start ();
 
 //
 //        // 尝试重定向标准输入输出
@@ -241,6 +248,7 @@ class Worker
         self::$_globalStatistics['start_timestamp'] = time ();
         // 设置status文件位置
         self::$_statisticsFile = sys_get_temp_dir () . '/workerOnSwoole.status';
+
         // 尝试设置进程名称（需要php>=5.5或者安装了proctitle扩展）
 //        self::setProcessTitle('WorkerMan: master process  start_file=' . self::$_startFile);
 
@@ -267,16 +275,6 @@ class Worker
         // 子命令，目前只支持-d
         $command2 = isset($argv[2]) ? $argv[2] : '';
 
-        // 记录日志
-        $mode = '';
-        if ($command === 'start') {
-            if ($command2 === '-d') {
-                $mode = 'in DAEMON mode';
-            } else {
-                $mode = 'in DEBUG mode';
-            }
-        }
-
 //未实现        self::log("Workerman[$start_file] $command $mode");
 
         // 检查主进程是否在运行
@@ -284,10 +282,13 @@ class Worker
         $master_is_alive = $master_pid && @posix_kill ($master_pid, 0);
         if ($master_is_alive) {
             if ($command === 'start') {
-                self::log ("Workerman[$start_file] is running");
+                echo "WOS[$start_file] is running";
+                exit(0);
+//                self::log ("Workerman[$start_file] is running");
             }
         } elseif ($command !== 'start' && $command !== 'restart') {
-            self::log ("Workerman[$start_file] not run");
+            echo "WOS[$start_file] not run";
+//            self::log ("Workerman[$start_file] not run");
         }
 
         // 根据命令做相应处理
@@ -298,65 +299,42 @@ class Worker
                     Worker::$daemonize = true;
                 }
                 break;
-            /*// 显示 workerman 运行状态
+            // 显示 workerman 运行状态 - 暂时没想到办法起作用
             case 'status':
+//                var_dump($master_pid);
                 // 尝试删除统计文件，避免脏数据
-                if(is_file(self::$_statisticsFile))
-                {
-                    @unlink(self::$_statisticsFile);
-                }
-                // 向主进程发送 SIGUSR2 信号 ，然后主进程会向所有子进程发送 SIGUSR2 信号
-                // 所有进程收到 SIGUSR2 信号后会向 $_statisticsFile 写入自己的状态
-                posix_kill($master_pid, SIGUSR2);
-                // 睡眠100毫秒，等待子进程将自己的状态写入$_statisticsFile指定的文件
-                usleep(100000);
-                // 展示状态
-                readfile(self::$_statisticsFile);
+//                if(is_file(self::$_statisticsFile))
+//                {
+//                    @unlink(self::$_statisticsFile);
+//                }
+//                // 向主进程发送 SIGUSR2 信号 ，然后主进程会向所有子进程发送 SIGUSR2 信号
+                //所有进程收到 SIGUSR2 信号后会向 $_statisticsFile 写入自己的状态
+//                posix_kill ($master_pid, SIGUSR2);
+//                // 睡眠100毫秒，等待子进程将自己的状态写入$_statisticsFile指定的文件
+//                usleep (100000);
+//                // 展示状态
+//                readfile (self::$_statisticsFile);
                 exit(0);
             // 重启 workerman
             case 'restart':
                 // 停止 workeran
             case 'stop':
-                self::log("Workerman[$start_file] is stoping ...");
-                // 想主进程发送SIGINT信号，主进程会向所有子进程发送SIGINT信号
-                $master_pid && posix_kill($master_pid, SIGINT);
-                // 如果 $timeout 秒后主进程没有退出则展示失败界面
-                $timeout = 5;
-                $start_time = time();
-                while(1)
-                {
-                    // 检查主进程是否存活
-                    $master_is_alive = $master_pid && posix_kill($master_pid, 0);
-                    if($master_is_alive)
-                    {
-                        // 检查是否超过$timeout时间
-                        if(time() - $start_time >= $timeout)
-                        {
-                            self::log("Workerman[$start_file] stop fail");
-                            exit;
-                        }
-                        usleep(10000);
-                        continue;
-                    }
-                    self::log("Workerman[$start_file] stop success");
-                    // 是restart命令
-                    if($command === 'stop')
-                    {
-                        exit(0);
-                    }
-                    // -d 说明是以守护进程的方式启动
-                    if($command2 === '-d')
-                    {
-                        Worker::$daemonize = true;
-                    }
-                    break;
+                echo "Server is shutdown now!\n";
+                posix_kill ($master_pid, SIGTERM);
+//                sleep (1);
+                posix_kill ($master_pid, 9);// 如果是不是守护进程,这里最后发送个强制停止的信号.
+                if ($command == 'stop') {
+                    exit();
+                    // 如果是restart ,那么继续执行后续逻辑,会再起一个进程
                 }
+                echo "Server is restart now! \n";
                 break;
             // 平滑重启 workerman
             case 'reload':
-                posix_kill($master_pid, SIGUSR1);
-                self::log("Workerman[$start_file] reload");
-                exit;*/
+                echo "Server worker reload now! \n";
+                posix_kill ($master_pid, SIGUSR1);//重启worker进程,可以测试装载功能
+//                posix_kill ($master_pid, SIGUSR2);//1.7.7+仅重启task_worker进程
+                exit;
             // 未知命令
             default :
                 exit("Usage: php yourfile.php {start|stop|restart|reload|status}\n");
@@ -407,6 +385,7 @@ class Worker
         $config = array(
             'worker_num' => $this->count,
             'daemonize'  => self::$daemonize,
+            'chroot'     => '/tmp/root',
         );
 
         $this->server->set ($config);
@@ -444,19 +423,17 @@ class Worker
      */
     protected static function displayUI()
     {
-        echo "\033[1A\n\033[K-----------------------\033[47;30m WORKERMAN \033[0m-----------------------------\n\033[0m";
-        echo 'Workerman version:' , Worker::VERSION , "          PHP version:",PHP_VERSION,"\n";
+        echo "\033[1A\n\033[K-----------------------\033[47;30m WORKERONSWOOLE \033[0m-----------------------------\n\033[0m";
+        echo 'Workerman version:', Worker::VERSION, "          PHP version:", PHP_VERSION, "\n";
+        echo 'Swoole version:', swoole_version (), "\n";
         $listen = self::$socketName;
         echo "Server listen  {$listen}\n";
 
-        if(self::$daemonize)
-        {
+        if (self::$daemonize) {
             global $argv;
             $start_file = $argv[0];
             echo "Input \"php $start_file stop\" to quit. Start success.\n";
-        }
-        else
-        {
+        } else {
             echo "Press Ctrl-C to quit.\n";
         }
 
