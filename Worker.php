@@ -156,6 +156,11 @@ class Worker
      */
     public $callbacks = array();
 
+    // 服务器类型
+    public $type;
+
+    public $mode = SWOOLE_PROCESS;
+
 
     /**
      * 运行所有worker实例
@@ -365,13 +370,63 @@ class Worker
         }
 
         // 如果有指定应用层协议，则检查对应的协议类是否存在
-        switch ($url['scheme']) {
-            case 'http':
-                $this->server = new \swoole_http_server($url['host'], $url['port']);
-                break;
-            default:
-                break;
+        if ($url) {
+            switch (strtolower($url['scheme'])) {
+                case 'ws':
+                case 'wss':
+                    if ($this->server) {
+                        if ($this->type == "ws" || $this->type == "wss") {
+                            $this->server->addListener($url['host'], $url['port']);
+                        }
+                        else {
+                            throw new \Exception($this->type . " server didn't support add " . $url['scheme'] . " scheme");
+                        }
+                    }
+                    else {
+                        $this->server = new \swoole_websocket_server($url['host'], $url['port'], $this->mode);
+                        $this->type = strtolower($url['scheme']);
+                    }
+                    break;
+                case 'http':
+                case 'https':
+                    if ($this->server) {
+                        if ($this->type == "http" || $this->type == "https") {
+                            $this->server->addListener($url['host'], $url['port']);
+                        }
+                        else {
+                            throw new \Exception($this->type . " server didn't support add " . $url['scheme'] . " scheme");
+                        }
+                    }
+                    else {
+                        $this->server = new \swoole_http_server($url['host'], $url['port'], $this->mode);
+                        $this->type = strtolower($url['scheme']);
+                    }
+                    break;
+                case 'tcp':
+                case 'tcp4':
+                case 'tcp6':
+                case 'unix':
+                    if ($this->server) {
+                        if ($this->type == "socket") {
+                            $this->server->addListener($url);
+                        }
+                        else {
+                            throw new \Exception($this->type . " server didn't support add " . $url['scheme'] . " scheme");
+                        }
+                    }
+                    else {
+                        $this->server = new \Hprose\Swoole\Socket\Server($url, $this->mode);
+                        $this->type = "socket";
+                    }
+                    break;
+                default:
+                    throw new \Exception("Only support ws, wss, http, https, tcp, tcp4, tcp6 or unix scheme");
+            }
         }
+        else {
+            throw new \Exception("Can't parse this url: " . $url);
+        }
+
 
 
     }
