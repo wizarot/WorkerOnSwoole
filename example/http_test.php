@@ -45,7 +45,11 @@ $http_worker->onShutdown = function($server){
 // worker进程启动事件
 $http_worker->onWorkerStart = function($serv, $worker_id){
     // 据文档说,如果reload,那么只有在这里require的文件reload才能重新加载.
-
+    // 加载所有Applications/*/start.php，以便启动所有服务
+//    foreach(glob(__DIR__.'/Applications/*/start*.php') as $start_file)
+//    {
+//        require_once $start_file;
+//    }
 
 
     global $argv;// 全局变量中包含参数

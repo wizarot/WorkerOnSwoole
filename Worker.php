@@ -326,12 +326,13 @@ class Worker
             case 'stop':
                 echo "Server is shutdown now!\n";
                 posix_kill ($master_pid, SIGTERM);
-//                sleep (1);
+                sleep (5);
                 posix_kill ($master_pid, 9);// 如果是不是守护进程,这里最后发送个强制停止的信号.
                 if ($command == 'stop') {
                     exit();
                     // 如果是restart ,那么继续执行后续逻辑,会再起一个进程
                 }
+
                 echo "Server is restart now! \n";
                 break;
             // 平滑重启 workerman
