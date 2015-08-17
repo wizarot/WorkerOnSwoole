@@ -38,6 +38,10 @@ class Autoloader
         {
             $class_file = __DIR__.substr($class_path, strlen('WorkerOnSwoole')).'.php';
         }
+        elseif(strpos($name, 'Applications\\') === 0)
+        {
+            $class_file = __DIR__.'/'.($class_path).'.php';
+        }
         else 
         {
             // 先尝试在应用目录寻找文件
