@@ -420,10 +420,12 @@ class Worker
         $methods = get_class_methods( $user_event );
         // 没办法了.既然使用 __call动态加载不行,那么暂时能想到的只能是遍历event对象中所有on开头的方法,都注册过来!
         foreach ( $methods as $event ) {
-            if ( strpos( $event, 'on' ) !== FALSE ){
+            if ( strpos( $event, 'on' ) === 0 ){
                 // 还是直接处理吧....
                 $name = strtolower( ltrim( $event, 'on' ) );
-                $this->server->on( $name , array( $user_event, $event ) );
+//                var_dump($user_event->on);die;
+//                $this->server->on( $name , array( $user_event, $event ) );
+                $this->callbacks[$name] = array($user_event , $event);
             }
         }
 
