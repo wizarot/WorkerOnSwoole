@@ -92,7 +92,7 @@ class Worker
      * 注意 此属性一般不必手动设置，默认会放到php临时目录中
      * @var string
      */
-    public static $pidFile = '/tmp/workerOnSwoole.pid';
+    public static $pidFile = '';
 
     /**
      * pid 主进程id
@@ -466,6 +466,45 @@ class Worker
      */
     function setCallbacks()
     {
+        // 注册下基础的callback,如果另外又改写了,那么就覆盖掉默认的
+        //主进程启动事件,和worker进程启动,没先后顺序
+        $this->server->on ('start' , function ($server){
+
+            Worker::$_masterPid = $server->master_pid;
+            if(false === @file_put_contents(Worker::$pidFile, Worker::$_masterPid))
+            {
+                throw new Exception('can not save pid to ' . Worker::$pidFile);
+            }
+
+            echo "master  is running at : {$server->master_pid} \n";
+            echo "manager is running at : {$server->manager_pid} \n";
+        });
+
+        //Server结束时发生
+        //强制kill进程不会回调onShutdown，如kill -9
+        //需要使用kill -15来发送SIGTREM信号到主进程才能按照正常的流程终止
+        $this->server->on ('shutdown' ,function($server){
+            @unlink(self::$pidFile);
+            echo "master is stoped.. \n";
+        });
+
+        $this->server->on ('workerstart' ,function($server, $worker_id){
+            // 据文档说,如果reload,那么只有在这里require的文件reload才能重新加载.
+            // 加载所有Applications/*/start.php，以便启动所有服务
+            //    foreach(glob(__DIR__.'/Applications/*/start*.php') as $start_file)
+            //    {
+            //        require_once $start_file;
+            //    }
+            global $argv;// 全局变量中包含参数
+            echo "worker - {$argv[0]} is running at: {$server->worker_pid} \n";
+        });
+
+        $this->server->on ('workerstop' , function($server, $worker_id){
+
+            echo "worker - {$server->worker_pid} is stoped..  \n";
+        });
+
+        //加载外部自定义事件
         foreach ($this->callbacks as $env => $func) {
             $this->server->on ($env, $func);
         }
