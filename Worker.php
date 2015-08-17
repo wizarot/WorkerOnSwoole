@@ -41,12 +41,6 @@ class Worker
      */
     const STATUS_RELOADING = 8;
 
-    /**
-     * 给子进程发送重启命令 KILL_WORKER_TIMER_TIME 秒后
-     * 如果对应进程仍然未重启则强行杀死
-     * @var int
-     */
-    const KILL_WORKER_TIMER_TIME = 1;
 
     /**
      * 默认的backlog，即内核中用于存放未被进程认领（accept）的连接队列长度
@@ -183,13 +177,6 @@ class Worker
         self::$_globalStatistics[ 'start_timestamp' ] = time();
         $this->server->start();
 
-//
-//        // 尝试重定向标准输入输出
-//        self::resetStd();
-//        // 监控所有子进程（worker进程）
-//        self::monitorWorkers();
-
-        //
     }
 
     /**
@@ -208,11 +195,6 @@ class Worker
         if ( $socket_name ) {
             self::$socketName = $socket_name;
 
-//            if(!isset($context_option['socket']['backlog']))
-//            {
-//                $context_option['socket']['backlog'] = self::DEFAUL_BACKLOG;
-//            }
-//            $this->_context = stream_context_create($context_option);
         }
 
 
