@@ -6,15 +6,19 @@
  * Time: 下午3:31
  *
  * How to use
- * Mode 1.
+ * Mode 1:
  * echo Console::render('<bg=red;ft=green>Hello world!</>');
- * Mode 2.
+ * Mode 2:
  * echo Console::table()->setSlice( ' | ' )->br( '+' )
  *      ->td4( '<fg=lightBlue;bg=red>title</>', 'center' )->br( '=' )
  *      ->td( 'row1' )->td2( 'Centertitle', 'center' )->td( 'kjdfkajdksfjklde' )->br( '-' )
  *      ->td( 'rewwwwww' )->td( 'chinese', 'center' )->td( 'Hello World' )->td( '' )->br( '-' )
  *      ->td( 'a' )->td( '<fg=green;opt=bold>b</>', 'center' )->td( 'c' )->td( 'd' )->br( )
  *      ->td3( 'b3', 'center' )->td( 'c' )->br( '+' );
+ *
+ * Mode 3:
+ * echo Console::alert('Hello alert!');
+ * can use type alert,success,info,error
  */
 
 namespace WorkerOnSwoole\lib;
@@ -306,6 +310,29 @@ class Console
             }
             $this->td( $args[ 0 ], $args[ 1 ] );//注意考虑下单元格类型
             return $this;
+        }
+
+
+    }
+
+    public static function __callStatic( $method, $args )
+    {
+        // 类型着色
+        switch ( $method ) {
+            case 'alert':
+                return self::render( '<bg=yellow>' . $args[ 0 ] . '</>' );
+                break;
+            case 'success':
+                return self::render( '<bg=green>' . $args[ 0 ] . '</>' );
+                break;
+            case 'info':
+                return self::render( '<bg=blue>' . $args[ 0 ] . '</>' );
+                break;
+            case 'error':
+                return self::render( '<bg=red>' . $args[ 0 ] . '</>' );
+                break;
+            default:
+                break;
         }
     }
 

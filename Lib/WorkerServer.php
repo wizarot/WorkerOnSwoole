@@ -74,8 +74,8 @@ class WorkerServer extends Server implements IFace\Server
     {
         global $argv;
         Console::setProcessName( 'php ' . $argv[ 0 ] . ': master -host=' . $this->host . ' -port=' . $this->port );
-        echo Console::render( "<bg=green;>master  process is running at : {$server->master_pid} </>" ) . "\n";
-        echo Console::render( "<bg=green;>manager process is running at : {$server->manager_pid} </>" ) . "\n";
+        echo Console::success( "master  process is running at : {$server->master_pid} " ) . "\n";
+        echo Console::success( "manager process is running at : {$server->manager_pid} " ) . "\n";
 
         if ( !empty( $this->runtimeSetting[ 'pid_file' ] ) ) {
             file_put_contents( $this->pid_file, $server->master_pid );
@@ -88,7 +88,7 @@ class WorkerServer extends Server implements IFace\Server
         if ( !empty( $this->runtimeSetting[ 'pid_file' ] ) ) {
             unlink( $this->pid_file );
         }
-        echo Console::render( "<bg=blue;>master process is stoped.. </>" ) . "\n";
+        echo Console::info( "master process is stoped.. " ) . "\n";
 
     }
 
@@ -97,7 +97,7 @@ class WorkerServer extends Server implements IFace\Server
         if ( !empty( $this->runtimeSetting[ 'pid_file' ] ) ) {
             unlink( $this->pid_file );
         }
-        echo Console::render( "<bg=blue;>manager process is stoped.. </>" ) . "\n";
+        echo Console::info( "manager process is stoped.. " ) . "\n";
 
     }
 
@@ -106,10 +106,10 @@ class WorkerServer extends Server implements IFace\Server
         global $argv;
         if ( $worker_id >= $serv->setting[ 'worker_num' ] ) {
             Console::setProcessName( 'php ' . $argv[ 0 ] . ': task' );
-            echo Console::render( "<bg=green;>task   is running at : {$serv->worker_pid} </>" ) . "\n";
+            echo Console::success( "task   is running at : {$serv->worker_pid} " ) . "\n";
         } else {
             Console::setProcessName( 'php ' . $argv[ 0 ] . ': worker' );
-            echo Console::render( "<bg=green;>worker is running at : {$serv->worker_pid} </>" ) . "\n";
+            echo Console::success( "worker is running at : {$serv->worker_pid} " ) . "\n";
         }
         if ( method_exists( $this->protocol, 'onStart' ) ) {
             $this->protocol->onStart( $serv, $worker_id );
@@ -166,7 +166,7 @@ class WorkerServer extends Server implements IFace\Server
         global $argv;
         $start_file = $argv[ 0 ];
         if ( !isset( $argv[ 1 ] ) ) {
-            echo Console::render("<bg=yellow>Usage: php ".$argv[0]." {start|stop|restart|reload|status}</>")."\n";
+            echo Console::alert("Usage: php ".$argv[0]." {start|stop|restart|reload|status}")."\n";
             exit();
         }
 
@@ -183,12 +183,12 @@ class WorkerServer extends Server implements IFace\Server
         $master_is_alive = $master_pid && @posix_kill( $master_pid, 0 );
         if ( $master_is_alive ) {
             if ( $command === 'start' ) {
-                echo "WOS[$start_file] is running";
+                echo Console::alert("WorkerOnSwoole [$start_file] is already running")."\n";
                 exit( 0 );
 //                self::log ("Workerman[$start_file] is running");
             }
         } elseif ( $command !== 'start' && $command !== 'restart' ) {
-            echo "WOS[$start_file] not run";
+            echo Console::error("WorkerOnSwoole [$start_file] not run")."\n";
 //            self::log ("Workerman[$start_file] not run");
         }
 
@@ -220,8 +220,9 @@ class WorkerServer extends Server implements IFace\Server
             case 'restart':
                 // 停止 workeran
             case 'stop':
-                echo "Server is shutdown now!\n";
+                echo Console::info("Server is shutdown now!")."\n";
                 posix_kill( $master_pid, SIGTERM );
+                posix_kill( $master_pid +1, SIGTERM );
                 sleep( 5 );
                 posix_kill( $master_pid, 9 );// 如果是不是守护进程,这里最后发送个强制停止的信号.
                 if ( $command == 'stop' ) {
@@ -229,17 +230,17 @@ class WorkerServer extends Server implements IFace\Server
                     // 如果是restart ,那么继续执行后续逻辑,会再起一个进程
                 }
 
-                echo "Server is restart now! \n";
+                echo Console::info("Server is restart now! ")."\n";
                 break;
             // 平滑重启 workerman
             case 'reload':
-                echo "Server worker reload now! \n";
+                echo Console::info("Server worker reload now! ")."\n";
                 posix_kill( $master_pid, SIGUSR1 );//重启worker进程,可以测试装载功能
-//                posix_kill ($master_pid, SIGUSR2);//1.7.7+仅重启task_worker进程
                 exit;
             // 未知命令
             default :
-                exit( "Usage: php yourfile.php {start|stop|restart|reload|status}\n" );
+                echo Console::alert("Usage: php ".$argv[0]." {start|stop|restart|reload|status}")."\n";
+                exit();
         }
     }
 
@@ -271,16 +272,17 @@ class WorkerServer extends Server implements IFace\Server
     protected function displayUI()
     {
         $listen = $this->socketName;
+        global $argv;
+
 
         $ui = Console::table()->setSlice('  ')->td2('<bg=lightBlue>WorkerOnSwoole</>','center')->br('-')
             ->td("WorkerServer version : ". self::VERSION )->td("PHP version : ". PHP_VERSION)->br()
             ->td("Swoole version : " . SWOOLE_VERSION)->td()->br()
             ->td("Server listen :  {$listen}")->td()->br()
-            ->td("Server file :  {$this->_startFile}")->td()->br('-')
+            ->td("Server file :  {$argv[0]} ")->td()->br('-')
             ->td2("<bg=lightBlue>WORKERS</>",'center')->br('-');
 
         if ( isset( $this->runtimeSetting[ 'daemonize' ] ) && $this->runtimeSetting[ 'daemonize' ] == 1 ) {
-            global $argv;
             $start_file = $argv[ 0 ];
             $ui->td2("Input \"php $start_file stop\" to quit. Start success.\n")->br(' ');
         } else {
