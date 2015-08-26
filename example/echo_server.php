@@ -22,7 +22,7 @@ class EchoServer extends Protocol\Base
 {
     function onReceive($server,$client_id, $from_id, $data)
     {
-        $this->server->send($client_id, "Swoole: ".$data);
+        $this->server->send($client_id, "WOS: ".$data);
     }
 }
 

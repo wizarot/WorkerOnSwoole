@@ -166,7 +166,7 @@ class WorkerServer extends Server implements IFace\Server
         global $argv;
         $start_file = $argv[ 0 ];
         if ( !isset( $argv[ 1 ] ) ) {
-            echo Console::alert("Usage: php ".$argv[0]." {start|stop|restart|reload|status}")."\n";
+            echo Console::alert( "Usage: php " . $argv[ 0 ] . " {start|stop|restart|reload|status}" ) . "\n";
             exit();
         }
 
@@ -183,12 +183,12 @@ class WorkerServer extends Server implements IFace\Server
         $master_is_alive = $master_pid && @posix_kill( $master_pid, 0 );
         if ( $master_is_alive ) {
             if ( $command === 'start' ) {
-                echo Console::alert("WorkerOnSwoole [$start_file] is already running")."\n";
+                echo Console::alert( "WorkerOnSwoole [$start_file] is already running" ) . "\n";
                 exit( 0 );
 //                self::log ("Workerman[$start_file] is running");
             }
         } elseif ( $command !== 'start' && $command !== 'restart' ) {
-            echo Console::error("WorkerOnSwoole [$start_file] not run")."\n";
+            echo Console::error( "WorkerOnSwoole [$start_file] not run" ) . "\n";
 //            self::log ("Workerman[$start_file] not run");
         }
 
@@ -220,9 +220,9 @@ class WorkerServer extends Server implements IFace\Server
             case 'restart':
                 // 停止 workeran
             case 'stop':
-                echo Console::info("Server is shutdown now!")."\n";
+                echo Console::info( "Server is shutdown now!" ) . "\n";
                 posix_kill( $master_pid, SIGTERM );
-                posix_kill( $master_pid +1, SIGTERM );
+                posix_kill( $master_pid + 1, SIGTERM );
                 sleep( 5 );
                 posix_kill( $master_pid, 9 );// 如果是不是守护进程,这里最后发送个强制停止的信号.
                 if ( $command == 'stop' ) {
@@ -230,16 +230,16 @@ class WorkerServer extends Server implements IFace\Server
                     // 如果是restart ,那么继续执行后续逻辑,会再起一个进程
                 }
 
-                echo Console::info("Server is restart now! ")."\n";
+                echo Console::info( "Server is restart now! " ) . "\n";
                 break;
             // 平滑重启 workerman
             case 'reload':
-                echo Console::info("Server worker reload now! ")."\n";
+                echo Console::info( "Server worker reload now! " ) . "\n";
                 posix_kill( $master_pid, SIGUSR1 );//重启worker进程,可以测试装载功能
                 exit;
             // 未知命令
             default :
-                echo Console::alert("Usage: php ".$argv[0]." {start|stop|restart|reload|status}")."\n";
+                echo Console::alert( "Usage: php " . $argv[ 0 ] . " {start|stop|restart|reload|status}" ) . "\n";
                 exit();
         }
     }
@@ -275,18 +275,18 @@ class WorkerServer extends Server implements IFace\Server
         global $argv;
 
 
-        $ui = Console::table()->setSlice('  ')->td2('<bg=lightBlue>WorkerOnSwoole</>','center')->br('-')
-            ->td("WorkerServer version : ". self::VERSION )->td("PHP version : ". PHP_VERSION)->br()
-            ->td("Swoole version : " . SWOOLE_VERSION)->td()->br()
-            ->td("Server listen :  {$listen}")->td()->br()
-            ->td("Server file :  {$argv[0]} ")->td()->br('-')
-            ->td2("<bg=lightBlue>WORKERS</>",'center')->br('-');
+        $ui = Console::table()->setSlice( '  ' )->td4( '<bg=lightBlue>WorkerOnSwoole</>', 'center' )->br( '-' )
+            ->td( "WorkerServer version:" ,'right')->td( self::VERSION )->td( "PHP version:" ,'right')->td( PHP_VERSION )->br()
+            ->td( "Swoole version:" ,'right')->td( SWOOLE_VERSION ,'left')->td2('')->br()
+            ->td( "Server listen:" ,'right')->td( $listen )
+            ->td( "Server file:" ,'right')->td( $argv[ 0 ] )->td2('')->br( '-' )
+            ->td4( "<bg=lightBlue>WORKERS</>", 'center' )->br( '-' );
 
         if ( isset( $this->runtimeSetting[ 'daemonize' ] ) && $this->runtimeSetting[ 'daemonize' ] == 1 ) {
             $start_file = $argv[ 0 ];
-            $ui->td2("Input \"php $start_file stop\" to quit. Start success.\n")->br(' ');
+            $ui->td4( "Input \"php $start_file stop\" to quit. Start success.\n" )->br( ' ' );
         } else {
-            $ui->td2("Press Ctrl-C to quit.")->br(' ');
+            $ui->td4( "Press Ctrl-C to quit." )->br( ' ' );
         }
 
         echo $ui;
