@@ -11,7 +11,6 @@ if(!extension_loaded('swoole'))
     exit("Please install swoole extension. \n");
 }
 
-global $php;
 
 
 require_once __DIR__.'/../Autoloader.php';
@@ -27,7 +26,7 @@ class EchoServer extends Protocol\Base
     }
 }
 
-$AppSvr = new EchoServer();
-$server = WorkerServer::autoCreate('0.0.0.0', 9505);
-$server->setProtocol($AppSvr);
+$echoSvr = new EchoServer();
+$server = WorkerServer::listen('0.0.0.0', 9505);
+$server->setProtocol($echoSvr);
 $server->run(array('worker_num' => 1));

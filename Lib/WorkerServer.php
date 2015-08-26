@@ -20,20 +20,19 @@ class WorkerServer extends Server implements IFace\Server
 
     /**
      * 自动推断扩展支持
-     * 默认使用swoole扩展,其次是libevent,最后是select(支持windows)
+     * 仅支持swoole扩展,如果有问题则直接退出
      * @param      $host
      * @param      $port
      * @param bool $ssl
      * @return Server
      */
-    static function autoCreate( $host, $port, $ssl = FALSE )
+    static function listen( $host, $port, $ssl = FALSE )
     {
         if ( class_exists( '\\swoole_server', FALSE ) ) {
             return new self( $host, $port, $ssl );
-        } elseif ( function_exists( 'event_base_new' ) ) {
-            return new EventTCP( $host, $port, $ssl );
-        } else {
-            return new SelectTCP( $host, $port, $ssl );
+        } else{
+            echo Console::render("<bg=red>Error must install php swoole extended model</>")."\n";
+            die;
         }
     }
 
@@ -43,8 +42,7 @@ class WorkerServer extends Server implements IFace\Server
         $this->sw = new \swoole_server( $host, $port, self::$sw_mode, $flag );
         $this->host = $host;
         $this->port = $port;
-//        Swoole\Error::$stop = FALSE;
-//        Swoole\JS::$return = TRUE;
+
         $this->runtimeSetting = array(
             //'reactor_num' => 4,      //reactor thread num
             //'worker_num' => 4,       //worker process num
