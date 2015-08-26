@@ -239,7 +239,7 @@ class Console
      * @param string $type
      * @return $this
      */
-    public function td( $str, $align = 'left', $type = '' )
+    public function td( $str = '', $align = 'left', $type = '' )
     {
         //$type 分为几种 '':普通单元格; 'span':多列占位格 ;'br':行间隔符
         // 单元格对齐
