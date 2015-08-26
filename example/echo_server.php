@@ -16,15 +16,18 @@ global $php;
 
 require_once __DIR__.'/../Autoloader.php';
 
-use WorkerOnSwoole\lib\Server;
+use WorkerOnSwoole\lib\WorkerServer;
+use WorkerOnSwoole\lib\Protocol;
 
-//class EchoServer extends Swoole\Protocol\Base
-//{
-//    function onReceive($server,$client_id, $from_id, $data)
-//    {
-//        $this->server->send($client_id, "Swoole: ".$data);
-//    }
-//}
+class EchoServer extends Protocol\Base
+{
+    function onReceive($server,$client_id, $from_id, $data)
+    {
+        $this->server->send($client_id, "Swoole: ".$data);
+    }
+}
 
-
-$server = Server::autoCreate('0.0.0.0', 9505);
+$AppSvr = new EchoServer();
+$server = WorkerServer::autoCreate('0.0.0.0', 9505);
+$server->setProtocol($AppSvr);
+$server->run(array('worker_num' => 1));
