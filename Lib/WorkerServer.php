@@ -31,10 +31,11 @@ class WorkerServer extends Server implements IFace\Server
      */
     static function listen( $host, $port, $ssl = FALSE )
     {
-        if ( class_exists( '\\swoole_server', FALSE ) ) {
+
+        if ( extension_loaded( '\\swoole_server', FALSE ) ) {
             return new self( $host, $port, $ssl );
         } else {
-            echo Console::render( "<bg=red>Error must install php swoole extended model</>" ) . "\n";
+            echo Console::error( "Please install swoole extension. " ) . "\n";
             die;
         }
     }
@@ -118,8 +119,6 @@ class WorkerServer extends Server implements IFace\Server
 
     function run( $setting = array() )
     {
-
-
         $this->runtimeSetting = array_merge( $this->runtimeSetting, $setting );
         if ( !empty( $this->runtimeSetting[ 'pid_file' ] ) ) {
             $this->pid_file = $this->runtimeSetting[ 'pid_file' ];
@@ -202,6 +201,8 @@ class WorkerServer extends Server implements IFace\Server
                 break;
             // 显示 workerman 运行状态 - 暂时没想到办法起作用
             case 'status':
+                // 装载的信号,发送看下回应
+
 //                var_dump($master_pid);
                 // 尝试删除统计文件，避免脏数据
 //                if(is_file(self::$_statisticsFile))
@@ -244,6 +245,7 @@ class WorkerServer extends Server implements IFace\Server
         }
     }
 
+
     function shutdown()
     {
         return $this->sw->shutdown();
@@ -276,10 +278,10 @@ class WorkerServer extends Server implements IFace\Server
 
 
         $ui = Console::table()->setSlice( '  ' )->td4( '<bg=lightBlue>WorkerOnSwoole</>', 'center' )->br( '-' )
-            ->td( "WorkerServer version:" ,'right')->td( self::VERSION )->td( "PHP version:" ,'right')->td( PHP_VERSION )->br()
-            ->td( "Swoole version:" ,'right')->td( SWOOLE_VERSION ,'left')->td2('')->br()
-            ->td( "Server listen:" ,'right')->td( $listen )
-            ->td( "Server file:" ,'right')->td( $argv[ 0 ] )->td2('')->br( '-' )
+            ->td( "WorkerServer version:", 'right' )->td( self::VERSION )->td( "PHP version:", 'right' )->td( PHP_VERSION )->br()
+            ->td( "Swoole version:", 'right' )->td( SWOOLE_VERSION, 'left' )->td2( '' )->br()
+            ->td( "Server listen:", 'right' )->td( $listen )
+            ->td( "Server file:", 'right' )->td( $argv[ 0 ] )->td2( '' )->br( '-' )
             ->td4( "<bg=lightBlue>WORKERS</>", 'center' )->br( '-' );
 
         if ( isset( $this->runtimeSetting[ 'daemonize' ] ) && $this->runtimeSetting[ 'daemonize' ] == 1 ) {

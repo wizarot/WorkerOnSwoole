@@ -60,6 +60,7 @@ abstract class Server implements IFace\Server
     /**
      * 应用协议
      * @param $protocol \WorkerOnSwoole\lib\IFace\Protocol
+     * 将协议对象传入服务器,同时将服务器对象传入协议,方便互相调用
      * @throws \Exception
      */
     function setProtocol( $protocol )

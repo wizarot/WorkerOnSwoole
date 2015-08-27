@@ -19,6 +19,7 @@ abstract class Base implements \WorkerOnSwoole\lib\IFace\Protocol
 
     /**
      * @var \WorkerOnSwoole\lib\Server
+     * 通过Server的setProtocol方法,实现了server和protocol的双向绑定,互相调用
      */
     public $server;
 
@@ -36,21 +37,21 @@ abstract class Base implements \WorkerOnSwoole\lib\IFace\Protocol
         $this->log = $log;
     }
 
-    function run($array)
-    {
-//        \Swoole\Error::$echo_html = true;
-        $this->server->run($array);
-    }
+//    function run($array)
+//    {
+////        \Swoole\Error::$echo_html = true;
+//        $this->server->run($array);
+//    }
 
     function setConfigJS($config)
     {
 
     }
 
-    function daemonize()
-    {
-        $this->server->daemonize();
-    }
+//    function daemonize()
+//    {
+//        $this->server->daemonize();
+//    }
 
     /**
      * 打印Log信息
