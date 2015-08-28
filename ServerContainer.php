@@ -58,7 +58,7 @@ class ServerContainer
     }
 
     // 目前这个容器只能运行一个swoole的服务器对象,因此多了也没用~
-    function __construct($socket_name = '', $config = array())
+    function __construct($socket_name = '', $config = array('server'=>array()))
     {
         // 这类给个默认配置,方便查询使用,也算个例子
         $default_server_config = array(
@@ -78,11 +78,14 @@ class ServerContainer
         $this->config = $merge_config;
 //        var_dump($this->config);
 
-        if (!isset($this->config['pid_file'])) {
+        if (!isset($this->config['server']['pid_file'])) {
             $backtrace = debug_backtrace();
             $this->start_file = $backtrace[count($backtrace) - 1]['file'];
-            $this->config['pid_file'] = sys_get_temp_dir() . "/WOS_" . str_replace('/', '_', $this->start_file) . ".pid";
+            $this->config['server']['pid_file'] = sys_get_temp_dir() . "/WOS_" . str_replace('/', '_', $this->start_file) . ".pid";
         }
+
+        $this->pid_file = $this->config['server']['pid_file'];
+
 
     }
 
@@ -329,7 +332,6 @@ class ServerContainer
             $this->server->on($env, $func);
         }
 
-        unset($this->events);//注册后就没用了.释放内存
     }
 
     /**
@@ -362,7 +364,7 @@ class ServerContainer
         echo $ui;
     }
 
-    //----------------------------------服务器事件----------------------
+    //----------------------------------服务器事件-----------------------------------------------------------------------
     function onMasterStart($server)
     {
         global $argv;

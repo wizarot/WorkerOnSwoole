@@ -12,8 +12,10 @@ namespace Applications\event;
 class todpole
 {
     /**
-     * 当客户端连上时触发
-     * @param int $client_id
+     * @param $server
+     * @param $request
+     *
+     * $request->fd(client_id);就是用户id,发送数据用,由系统自动生成如果断开重连则会改变
      */
     public function onOpen($server, $request )
     {
@@ -82,12 +84,24 @@ class todpole
 
     }
 
-    public function onTask()
+    /**
+     * 如果配置中开启task,那么就要求实现 onTask ,onFinish两个方法
+     * @param \swoole_server $serv
+     * @param int            $task_id
+     * @param int            $from_id
+     * @param string         $data
+     * @return bool
+     */
+    public function onTask(\swoole_server $serv, int $task_id, int $from_id, string $data)
     {
         return true;
     }
 
-    public  function onFinish()
+    /**
+     * 如果配置中开启task,那么就要求实现 onTask ,onFinish两个方法
+     * @return bool
+     */
+    public  function onFinish(\swoole_server $serv, int $task_id, string $data)
     {
         return true;
     }
@@ -95,7 +109,7 @@ class todpole
     public function sendToAll($server,$data){
         foreach($server->connections as $fd)
         {
-            $server->push($fd, $data);
+            $server->push($fd, $data);// sw服务,请使用push像客户端发送数据,send有问题
         }
     }
 }
