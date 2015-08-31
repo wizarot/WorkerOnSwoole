@@ -112,4 +112,6 @@ class todpole
             $server->push($fd, $data);// sw服务,请使用push像客户端发送数据,send有问题
         }
     }
+
+
 }
