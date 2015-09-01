@@ -20,7 +20,9 @@ use WorkerOnSwoole\lib\Console;
 class ServerContainer
 {
     // 实际swoole的server对象(实际是传入的protocol对象)
-    public $server;
+    public static $server;
+    // 每隔555毫秒向文件中写入服务器状态数据,由于定时器时间值不能重复因此可根据需要微调
+    public static $status_interval = 555;
     // 记录下监听的IP端口和业务
     public static $listen = array();
     // 用户自定义的Event事件-实际的逻辑
@@ -28,7 +30,7 @@ class ServerContainer
     // 临时注册事件,用来记录事件名称的变量
     public $events;
     // 服务器类型(这里多少有点问题,因为listen尝试接收多个)
-    public $type;
+    public static $type;
     // 业务配置信息
     public $config = array( 'server' => array() );
     // 服务容器的版本号
@@ -36,7 +38,7 @@ class ServerContainer
     // pid 存储文件
     protected $pid_file;
     // 业务主入口文件名
-    protected $start_file;
+    public static $start_file;
 
     static function listen( $socket_name = '', $config = array() )
     {
@@ -111,8 +113,8 @@ class ServerContainer
 
         if ( !isset( $this->config[ 'server' ][ 'pid_file' ] ) ) {
             $backtrace = debug_backtrace();
-            $this->start_file = $backtrace[ count( $backtrace ) - 1 ][ 'file' ];
-            $this->config[ 'server' ][ 'pid_file' ] = sys_get_temp_dir() . "/WOS_" . str_replace( '/', '_', $this->start_file ) . ".pid";
+            self::$start_file = $backtrace[ count( $backtrace ) - 1 ][ 'file' ];
+            $this->config[ 'server' ][ 'pid_file' ] = sys_get_temp_dir() . "/WOS_" . str_replace( '/', '_', self::$start_file ) . ".pid";
         }
 
         $this->pid_file = $this->config[ 'server' ][ 'pid_file' ];
@@ -146,13 +148,16 @@ class ServerContainer
         $this->setCallbacks();
 
 
-        $this->server->set( $this->config[ 'server' ] );// 仅加载针对server的配置
+        self::$server->set( $this->config[ 'server' ] );// 仅加载针对server的配置
 
 
         //显示命令行状态
         $this->displayUI();
+        self::$server->status_interval = self::$status_interval;
+        self::$server->start_file = self::$start_file;
 
-        $this->server->start();
+
+        self::$server->start();
     }
 
     /**
@@ -191,7 +196,6 @@ class ServerContainer
             echo Console::error( "WorkerOnSwoole [$start_file] not run" ) . "\n";
 //            self::log ("Workerman[$start_file] not run");
         }
-
         // 根据命令做相应处理
         switch ( $command ) {
             // 启动 workerman
@@ -202,22 +206,18 @@ class ServerContainer
                 break;
             // 显示 workerman 运行状态 - 暂时没想到办法起作用
             case 'status':
-                // 装载的信号,发送看下回应
+                // 由定时器产生,定时写入服务器状态
+                $state_file = sys_get_temp_dir() . "/WOS_status_" . str_replace( '/', '_', self::$start_file ) . ".pid";
+                $data = file_get_contents( $state_file );
+                $data = json_decode( $data, TRUE );
 
-//                var_dump($master_pid);
-                // 尝试删除统计文件，避免脏数据
-//                if(is_file(self::$_statisticsFile))
-//                {
-//                    @unlink(self::$_statisticsFile);
-//                }
-//                // 向主进程发送 SIGUSR2 信号 ，然后主进程会向所有子进程发送 SIGUSR2 信号
-                //所有进程收到 SIGUSR2 信号后会向 $_statisticsFile 写入自己的状态
-//                posix_kill ($master_pid, SIGUSR2);
-//                // 睡眠100毫秒，等待子进程将自己的状态写入$_statisticsFile指定的文件
-//                usleep (100000);
-//                // 展示状态
-//                readfile (self::$_statisticsFile);
-                exit( 0 );
+                $ui = Console::table()->setSlice( '  ' )->td4( '<bg=lightBlue>WorkerOnSwoole</>', 'center' )->br( '-' )
+                    ->td( "Swoole vension:", 'right' )->td( SWOOLE_VERSION )->td( "PHP version:", 'right' )->td( PHP_VERSION )->br()
+                    ->td( "Server start at:", 'right' )->td( date( 'Y-m-d H:i:s', $data[ 'start_time' ] ), 'left' )->td( 'Connection num:', 'right' )->td( $data[ 'connection_num' ] )->br()
+                    ->td( "Accept count:", 'right' )->td( $data[ 'accept_count' ], 'left' )->td( 'Close count:', 'right' )->td( $data[ 'close_count' ] )->br()
+                    ->td( "Tasking num:", 'right' )->td( $data[ 'tasking_num' ], 'left' )->td( 'Request count:', 'right' )->td( $data[ 'request_count' ] )->br()
+                    ->td( "Worker request count:", 'right' )->td( $data[ 'worker_request_count' ], 'left' )->td( 'Task process num:', 'right' )->td( $data[ 'task_process_num' ] )->br();
+                exit( $ui );
             // 重启 workerman
             case 'restart':
                 // 停止 workeran
@@ -269,36 +269,24 @@ class ServerContainer
 
         // 如果有指定应用层协议，则检查对应的协议类是否存在
         if ( $url ) {
-            $this->type = strtolower( $url[ 'scheme' ] );
+            self::$type = strtolower( $url[ 'scheme' ] );
 
             switch ( strtolower( $url[ 'scheme' ] ) ) {
                 case 'ws':
                 case 'wss':
-                    if ( $this->server ) {
-                        if ( $this->type == "ws" || $this->type == "wss" ) {
-                            $this->server->addListener( $url[ 'host' ], $url[ 'port' ] );
-                        } else {
-                            throw new \Exception( $this->type . " server didn't support add " . $url[ 'scheme' ] . " scheme" );
-                        }
+                    if ( self::$server ) {
+                        self::$server->addListener( $url[ 'host' ], $url[ 'port' ], SWOOLE_SOCK_TCP );
                     } else {
-                        $this->server = new \swoole_websocket_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
-//                        $this->type = strtolower( $url[ 'scheme' ] );
+                        self::$server = new \swoole_websocket_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
                     }
                     break;
                 case 'http':
                 case 'https':
-                    $this->server->addListener( $url[ 'host' ], $url[ 'port' ], SWOOLE_TCP );
-
-                    /*if ( $this->server ) {
-                        if ( $this->type == "http" || $this->type == "https" ) {
-                            $this->server->addListener( $url[ 'host' ], $url[ 'port' ] );
-                        } else {
-                            throw new \Exception( $this->type . " server didn't support add " . $url[ 'scheme' ] . " scheme" );
-                        }
+                    if ( self::$server ) {
+                        self::$server->addListener( $url[ 'host' ], $url[ 'port' ], SWOOLE_SOCK_TCP );
                     } else {
-                        $this->server = new \swoole_http_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
-                        $this->type = strtolower( $url[ 'scheme' ] );
-                    }*/
+                        self::$server = new \swoole_http_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
+                    }
                     break;
                 case 'tcp':
                 case 'tcp4':
@@ -313,7 +301,9 @@ class ServerContainer
                     break;
                 case 'udp6':
                     $type = SWOOLE_SOCK_UDP6;
-//                case 'unix':
+                case
+                'unix':
+                    $type = SWOOLE_UNIX_DGRAM;//未实现
 
                     break;
                 default:
@@ -321,17 +311,10 @@ class ServerContainer
             }
             // 统一处理socket
             if ( isset( $type ) ) {
-                if ( $this->server ) {
-                    $this->server->addListener( $url[ 'host' ], $url[ 'port' ], $type );
-
-                    /* if ( $this->type == "socket" ) {
-                         $this->server->addListener( $url[ 'host' ], $url[ 'port' ], $type );
-                     } else {
-                         throw new \Exception( $this->type . " server didn't support add " . $url[ 'scheme' ] . " scheme" );
-                     }*/
+                if ( self::$server ) {
+                    self::$server->addListener( $url[ 'host' ], $url[ 'port' ], $type );
                 } else {
-//                    var_dump(SWOOLE_SOCK_UDP);die;
-                    $this->server = new \swoole_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS, $type );
+                    self::$server = new \swoole_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS, $type );
                 }
             }
         } else {
@@ -354,7 +337,7 @@ class ServerContainer
                 // 还是直接处理吧....
                 $name = strtolower( ltrim( $event, 'on' ) );
 //                var_dump($user_event->on);die;
-//                $this->server->on( $name , array( $user_event, $event ) );
+//                self::$server->on( $name , array( $user_event, $event ) );
                 $this->events[ $name ] = array( $user_event, $event );
             }
         }
@@ -366,47 +349,39 @@ class ServerContainer
     function setCallbacks()
     {
         $version = explode( '.', SWOOLE_VERSION );
-        //1.7.0
-        if ( $version[ 1 ] >= 7 ) {
-            $this->server->on( 'ManagerStart', function ( $serv ) {
-                global $argv;
-                Console::setProcessName('php ' . $argv[0] . ': manager');
-            } );
-        }
 
 
         // server基本事件
-        $this->server->on( 'Start', array( $this, 'onStart' ) );
-        $this->server->on( 'Shutdown', array( $this, 'onShutdown' ) );
-        $this->server->on( 'ManagerStart', array( $this, 'onManagerStart' ) );
-        $this->server->on( 'ManagerStop', array( $this, 'onManagerStop' ) );
-        $this->server->on( 'WorkerStart', array( $this, 'onWorkerStart' ) );
-        $this->server->on( 'WorkerStop', array( $this, 'onWorkerStop' ) );
-        $this->server->on( 'Timer', array( $this, 'onTimer' ) );
-        $this->server->on( 'Connect', array( $this, 'onConnect' ) );
-        $this->server->on( 'Receive', array( $this, 'onReceive' ) );
-//        if($this->type == 'udp' || $this->type == 'udps'){
-                //1.7.18以上版本
-//            $this->server->on( 'Packet', array( $this, 'onPacket' ) );
+        self::$server->on( 'Start', array( $this, 'onStart' ) );
+        self::$server->on( 'Shutdown', array( $this, 'onShutdown' ) );
+        self::$server->on( 'ManagerStart', array( $this, 'onManagerStart' ) );
+        self::$server->on( 'ManagerStop', array( $this, 'onManagerStop' ) );
+        self::$server->on( 'WorkerStart', array( $this, 'onWorkerStart' ) );
+        self::$server->on( 'WorkerStop', array( $this, 'onWorkerStop' ) );
+//        self::$server->on( 'Timer', array( $this, 'onTimer' ) );// 已经不这么用了
+        self::$server->on( 'Connect', array( $this, 'onConnect' ) );
+        self::$server->on( 'Receive', array( $this, 'onReceive' ) );
+//        if(self::$type == 'udp' || self::$type == 'udps'){
+        //1.7.18以上版本
+//            self::$server->on( 'Packet', array( $this, 'onPacket' ) );
 //        }
-        $this->server->on( 'Close', array( $this, 'onClose' ) );
-        $this->server->on( 'Task', array( $this, 'onTask' ) );
-        $this->server->on( 'Finish', array( $this, 'onFinish' ) );
-        $this->server->on( 'PipeMessage', array( $this, 'onPipeMessage' ) );
-        $this->server->on( 'WorkerError', array( $this, 'onWorkerError' ) );
-
-
-        // HttpServer事件
+        self::$server->on( 'Close', array( $this, 'onClose' ) );
+        self::$server->on( 'Task', array( $this, 'onTask' ) );
+        self::$server->on( 'Finish', array( $this, 'onFinish' ) );
+        self::$server->on( 'PipeMessage', array( $this, 'onPipeMessage' ) );
+        self::$server->on( 'WorkerError', array( $this, 'onWorkerError' ) );
         // WebSocketServer事件
+        if ( self::$type == 'ws' || self::$type == 'wss' ) {
+            // onHandShank和onOpen不能并存
+//            self::$server->on( 'HandShank', array( $this, 'onHandShake' ) );
+            self::$server->on( 'Open', array( $this, 'onOpen' ) );
+            self::$server->on( 'Message', array( $this, 'onMessage' ) );
+        }
+        // HttpServer和websocket通用事件
+        if ( in_array( self::$type, array( 'http', 'https', 'ws', 'wss' ) ) ) {
+            self::$server->on( 'Request', array( $this, 'onRequest' ) );
+        }
 
-
-        //加载外部自定义事件
-//        foreach ( $this->events as $env => $func ) {
-//            if($env == 'start'){
-//                continue;
-//            }
-//            $this->server->on( $env, $func );
-//        }
 
     }
 
@@ -424,9 +399,8 @@ class ServerContainer
             ->td( "WorkerServer version:", 'right' )->td( self::VERSION )->td( "PHP version:", 'right' )->td( PHP_VERSION )->br()
             ->td( "Swoole version:", 'right' )->td( SWOOLE_VERSION, 'left' )->td2( '' )->br();
         foreach ( $listen as $value ) {
-            $ui->td( "Server listen:", 'right' )->td( $value );
+            $ui->td( "Server listen:", 'right' )->td( $value )->td2( '' )->br();
         }
-
         $ui->td( "Server file:", 'right' )->td( $argv[ 0 ] )->td2( '' )->br( '-' )
             ->td4( "<bg=lightBlue>WORKERS</>", 'center' )->br( '-' );
 
@@ -438,6 +412,17 @@ class ServerContainer
         }
 
         echo $ui;
+    }
+
+    //----------------------------------按照WorkerMan-GateWay包装功能,本质是将swoole转换一下方便理解使用
+    static function sendToAll( $send_data, $client_id_array = array() )
+    {
+//        var_dump(self::$server);
+        $clients = self::$server->connections;
+        foreach ( $clients as $fd ) {
+            // 这里需要判断server的type,tcp udp 用send .ws用push httpServer就根本用不到这个
+            self::$server->send( $fd, $send_data );// sw服务,请使用push像客户端发送数据,send有问题
+        }
     }
 
     //----------------------------------服务器基本事件-----------------------------------------------------------------------
@@ -455,6 +440,13 @@ class ServerContainer
         if ( !empty( $this->config[ 'server' ][ 'pid_file' ] ) ) {
             file_put_contents( $this->pid_file, $server->master_pid );
         }
+
+        // 记录服务器状态
+        $server->tick( $server->status_interval, function () use ( $server ) {
+            $state_file = sys_get_temp_dir() . "/WOS_status_" . str_replace( '/', '_', $server->start_file ) . ".pid";
+            $status = $server->stats();
+            file_put_contents( $state_file, json_encode( $status ) );
+        } );
 
         // 如果用户也自定义了,那么接着执行用户自定义部分
         if ( method_exists( $this->user_event, 'onStart' ) ) {
@@ -488,7 +480,6 @@ class ServerContainer
      */
     function onManagerStart( $server )
     {
-
         // 如果用户也自定义了,那么接着执行用户自定义部分
         if ( method_exists( $this->user_event, 'onManagerStart' ) ) {
             $this->user_event->onManagerStart( $server );
@@ -561,13 +552,13 @@ class ServerContainer
      * @param     $server
      * @param     $interval
      */
-    function onTimer( $server, $interval )
-    {
-        // 如果用户也自定义了,那么接着执行用户自定义部分
-        if ( method_exists( $this->user_event, 'onTimer' ) ) {
-            $this->user_event->onTimer( $server, $interval );
-        }
-    }
+//    function onTimer( $server, $interval )
+//    {
+//        // 如果用户也自定义了,那么接着执行用户自定义部分
+//        if ( method_exists( $this->user_event, 'onTimer' ) ) {
+//            $this->user_event->onTimer( $server, $interval );
+//        }
+//    }
 
     /**
      * 有新的连接进入时，在worker进程中回调
@@ -592,10 +583,11 @@ class ServerContainer
      * @param $fd
      * @param $from_id
      * @param $data
+     * @return mixed
      */
     function onReceive( $server, $fd, $from_id, $data )
     {
-//        $server->send($fd, "WOS: " . $data);
+
         // 如果用户也自定义了,那么接着执行用户自定义部分
         if ( method_exists( $this->user_event, 'onReceive' ) ) {
             $this->user_event->onReceive( $server, $fd, $from_id, $data );
@@ -698,5 +690,75 @@ class ServerContainer
         }
     }
 
+    //-----------------------WebSocket服务事件---------------------------------------------------
+    /**
+     * WebSocket建立连接后进行握手
+     *
+     * @param $request
+     * @param $response
+     */
+    function onHandShake( $request, $response )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onHandShake' ) ) {
+            $this->user_event->onHandShake( $request, $response );
+        }
+    }
+
+    /**
+     * 当WebSocket客户端与服务器建立连接并完成握手后会回调此函数
+     *
+     * @param $server
+     * @param $request
+     */
+    function onOpen( $server, $request )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onOpen' ) ) {
+            $this->user_event->onOpen( $server, $request );
+        }
+    }
+
+    /**
+     * 当服务器收到来自客户端的数据帧时会回调此函数
+     *
+     * @param                        $server
+     * @param swoole_websocket_frame $frame
+     * swoole_websocket_frame 包含属性
+     * $frame->fd，客户端的socket id，使用$server->push推送数据时需要用到
+     * $frame->data，数据内容，可以是文本内容也可以是二进制数据，可以通过opcode的值来判断
+     * $frame->opcode，WebSocket的OpCode类型，可以参考WebSocket协议标准文档
+     * $frame->finish， 表示数据帧是否完整，一个WebSocket请求可能会分成多个数据帧进行发送
+     *
+     * @return bool
+     */
+    function onMessage( $server, $frame )
+    {
+        if ( $frame->data == 'getWOSServerState' ) {
+            $state = $server->stats();
+            $server->push( $frame->fd, json_encode( $state ) );
+
+            return TRUE;
+        }
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onMessage' ) ) {
+            $this->user_event->onMessage( $server, $frame );
+        }
+    }
+
+    //--------------------------HttpServer或WebSocketServer----------------------------------
+    /**
+     * 在收到一个完整的Http请求后，会回调此函数
+     *
+     * @param $request
+     * @param $response
+     */
+    function onRequest( $request, $response )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onRequest' ) ) {
+            $this->user_event->onRequest( $request, $response );
+        }
+    }
 
 }

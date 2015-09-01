@@ -19,8 +19,12 @@ class todpole
      */
     public function onOpen($server, $request )
     {
-//        var_dump($client_id);
         $server->push($request->fd ,('{"type":"welcome","id":'.$request->fd.'}'));
+    }
+
+    public function onRequest($request ,$response)
+    {
+        $response->end("<h1>Hello WorkerOnSwoole. #".rand(1000, 9999)."</h1>");
     }
 
     /**

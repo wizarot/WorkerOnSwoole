@@ -15,7 +15,8 @@ class EchoServer
 {
     function onReceive($server,$client_id, $from_id, $data)
     {
-        $server->send($client_id, "WOS: ".$data);
+//        $server->send($client_id, "WOS: ".$data);
+        ServerContainer::sendToAll("WOS: ".$data);
     }
 }
 
