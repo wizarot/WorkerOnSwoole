@@ -414,14 +414,68 @@ class ServerContainer
         echo $ui;
     }
 
-    //----------------------------------按照WorkerMan-GateWay包装功能,本质是将swoole转换一下方便理解使用
+    //----------------------------------按照WorkerMan-GateWay包装功能,本质是将swoole转换一下方便理解使用---------------------
+    //广播
     static function sendToAll( $send_data, $client_id_array = array() )
     {
-//        var_dump(self::$server);
         $clients = self::$server->connections;
-        foreach ( $clients as $fd ) {
-            // 这里需要判断server的type,tcp udp 用send .ws用push httpServer就根本用不到这个
-            self::$server->send( $fd, $send_data );// sw服务,请使用push像客户端发送数据,send有问题
+        if ( method_exists( self::$server, 'send' ) ) {
+            foreach ( $clients as $fd ) {
+                // 这里需要判断server的type,tcp udp 用send .ws用push httpServer就根本用不到这个
+                return self::$server->send( $fd, $send_data );//
+            }
+        } elseif ( method_exists( self::$server, 'push' ) ) {
+            foreach ( $clients as $fd ) {
+                return self::$server->push( $fd, $send_data );// sw服务,请使用push像客户端发送数据,send有问题
+            }
+        }
+
+    }
+
+    // 单播
+    static function sendToClient( $client_id, $send_data )
+    {
+        if ( method_exists( self::$server, 'send' ) ) {
+            return self::$server->send( $client_id, $send_data );//
+        } elseif ( method_exists( self::$server, 'push' ) ) {
+            return self::$server->push( $client_id, $send_data );// sw服务,请使用push像客户端发送数据,send有问题
+        }
+    }
+
+    //sendToCurrentClient 未实现,似乎没啥用
+
+    //服务器主动关闭连接
+    static function closeClient( $client_id )
+    {
+        return self::$server->close( $client_id );
+    }
+    //closeCurrentClient 未实现
+
+    // 是否在线
+    static function isOnline( $client_id )
+    {
+        return self::$server->exist( $client_id );
+    }
+
+    //获取全部在线客户端
+    static function getOnlineStatus()
+    {
+        return self::$server->connections;
+    }
+
+    //将client_id与uid绑定，以便通过sendToUid发送数据,每个客户端只允许执行一次,未测试
+    static function bindUid( $client_id, $uid )
+    {
+        return self::$server->bind( $client_id, $uid );
+    }
+
+    // 向配置的uid发送消息
+    static function sendToUid( $uid,  $message)
+    {
+        if ( method_exists( self::$server, 'send' ) ) {
+            return self::$server->send( $uid, $message );//
+        } elseif ( method_exists( self::$server, 'push' ) ) {
+            return self::$server->push( $uid, $message );// sw服务,请使用push像客户端发送数据,send有问题
         }
     }
 

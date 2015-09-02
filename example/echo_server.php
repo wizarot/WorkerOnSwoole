@@ -18,6 +18,11 @@ class EchoServer
 //        $server->send($client_id, "WOS: ".$data);
         ServerContainer::sendToAll("WOS: ".$data);
     }
+
+    function onConnect( $server, $fd, $from_id )
+    {
+        ServerContainer::bindUid($fd , 101);
+    }
 }
 
 $echoSvr = new EchoServer();
