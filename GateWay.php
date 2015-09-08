@@ -8,8 +8,8 @@
 
 namespace WorkerOnSwoole;
 
-use \Swoole;
 use \WorkerOnSwoole\Worker;
+use WorkerOnSwoole\lib\Console;
 
 /**
  * Class GateWay
@@ -18,22 +18,55 @@ use \WorkerOnSwoole\Worker;
  */
 class GateWay
 {
-    public static $servers = array();// 每个监听的对象服务器
-    public static $tmp_server;
+    public static $bin;
+    public static $argv;
+    public static $start_file;
+    public static $app_dir = 'Applications';
+    public static $dir     = __DIR__;
+    public static $command;
+
+    public function __construct( $config = FALSE )
+    {
+        global $argv;
+        self::$argv = $argv;
+        self::$bin = exec( 'which php54' );
+        self::$start_file = $argv[ 0 ];
+
+        if ( !isset( $argv[ 1 ] ) ) {
+            echo Console::error( "Usage: php " . $argv[ 0 ] . " {start|stop|restart|reload|status}" ) . "\n";
+            exit();
+        }
+
+        self::$command = $argv[ 1 ];
+
+        if ( isset( $config[ 'applications' ] ) ) {
+            self::$app_dir = $config[ 'applications' ];
+        } else {
+            self::$app_dir = self::$dir . '/' . self::$app_dir;
+        }
+    }
 
     /**
-     * @param \WorkerOnSwoole\Worker $server
+     * 自动加载执行Application根目录下全部start开头的功能
      */
-    public static function addServer(worker $server){
-        self::$tmp_server = $server;
-        $process = new \swoole_process(array('GateWay','serverFunc') ,FALSE );
-        $pid = $process->start();
-        self::$servers[$pid] = $process;
+    function run()
+    {
+        //加载文件
+        //使用swoole process执行每个Application下的server文件,也可以手动单独执行
+        // 加载所有Applications/*/start.php，以便启动所有服务
+        foreach ( glob( self::$app_dir . '/start*.php' ) as $start_file ) {
+            $command = self::$command;
+            $process = new \swoole_process( function ( \swoole_process $worker ) use ( $start_file, $command ) {
+                $worker->exec( self::$bin, array( $start_file, $command ) );
+            }, FALSE );
+
+            $pid = $process->start();
+            sleep( 1 );//少等下再继续
+        }
+
+        \swoole_process::wait();//防止出现僵尸进程
+
     }
 
-    public static function serverFunc(swoole_process $worker){
-        //加载配置,注册事件
-//        self::$tmp_server->runAll();
-        echo 'hello';
-    }
+
 }

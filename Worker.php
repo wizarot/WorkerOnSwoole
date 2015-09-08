@@ -1,246 +1,180 @@
 <?php
 
+/**
+ * Created by PhpStorm.
+ * User: will
+ * Date: 15/8/27
+ * Time: 下午5:21
+ */
+
+
 namespace WorkerOnSwoole;
 
-use \Swoole;
-use \Exception;
+use WorkerOnSwoole\lib\Console;
 
 /**
- * Worker 类
- * 是一个容器，用于监听端口，维持客户端连接
+ * Class Worker
+ * Server服务的装载容器
+ * @package WorkerOnSwoole
  */
 class Worker
 {
-    /**
-     * 版本号
-     * @var string
-     */
-    const VERSION = '0.0.1';
-
-    /**
-     * 状态 启动中
-     * @var int
-     */
-    const STATUS_STARTING = 1;
-
-    /**
-     * 状态 运行中
-     * @var int
-     */
-    const STATUS_RUNNING = 2;
-
-    /**
-     * 状态 停止
-     * @var int
-     */
-    const STATUS_SHUTDOWN = 4;
-
-    /**
-     * 状态 平滑重启中
-     * @var int
-     */
-    const STATUS_RELOADING = 8;
-
-
-    /**
-     * 默认的backlog，即内核中用于存放未被进程认领（accept）的连接队列长度
-     * @var int
-     */
-    const DEFAUL_BACKLOG = 1024;
-
-    /**
-     * udp最大包长
-     * @var int
-     */
-    const MAX_UDP_PACKEG_SIZE = 65535;
-
-    /**
-     * swoole生成的服务器实际对象
-     * @var obj
-     */
-    public $server;
-
-    /**
-     * 用户自定义的事件处理函数
-     * @var obj
-     */
+    // 实际swoole的server对象(实际是传入的protocol对象)
+    public static $server;
+    // 每隔555毫秒向文件中写入服务器状态数据,由于定时器时间值不能重复因此可根据需要微调
+    public static $status_interval = 555;
+    // 记录下监听的IP端口和业务
+    public static $listen = array();
+    // 用户自定义的Event事件-实际的逻辑
     public $user_event;
+    // 临时注册事件,用来记录事件名称的变量
+    public $events;
+    // 服务器类型(这里多少有点问题,因为listen尝试接收多个)
+    public static $type;
+    // 业务配置信息
+    public $config = array( 'server' => array() );
+    // 服务容器的版本号
+    const  VERSION = '0.0.5';
+    // pid 存储文件
+    protected $pid_file;
+    // 业务主入口文件名
+    public static $start_file;
 
-    /**
-     * socket名称，包括应用层协议+ip+端口号，在初始化worker时设置
-     * 值类似 http://0.0.0.0:80
-     * @var string
-     */
-    public static $socketName = '';
-
-    /**
-     * 当前worker实例初始化目录位置，用于设置应用自动加载的根目录
-     * @var string
-     */
-    protected $_appInitPath = '';
-
-    /**
-     * pid文件的路径及名称
-     * 例如 Worker::$pidFile = '/tmp/workerOnSwoole.pid';
-     * 注意 此属性一般不必手动设置，默认会放到php临时目录中
-     * @var string
-     */
-    public static $pidFile = '';
-
-    /**
-     * pid 主进程id
-     * @var string
-     */
-    public static $_masterPid = '';
-
-    /**
-     * 启动的全局入口文件
-     * 例如 php start.php start ，则入口文件为start.php
-     * @var string
-     */
-    protected static $_startFile = '';
-
-    /**
-     * 日志目录，默认在WOS根目录下，与Applications同级
-     * 可以手动设置
-     * 例如 Worker::$logFile = '/tmp/workerOnSwoole.log';
-     * @var mixed
-     */
-    public static $logFile = '';
-
-    /**
-     * 是否以守护进程的方式运行。运行start时加上-d参数会自动以守护进程方式运行
-     * 例如 php start.php start -d
-     * @var bool
-     */
-    public static $daemonize = FALSE;
-
-    /**
-     * 当前worker状态
-     * @var int
-     */
-    protected static $_status = self::STATUS_STARTING;
-
-    /**
-     * 全局统计数据，用于在运行 status 命令时展示
-     * 统计的内容包括 WOS启动的时间戳及每组worker进程的退出次数及退出状态码
-     * @var array
-     */
-    protected static $_globalStatistics
-        = array(
-            'start_timestamp'  => 0,
-            'worker_exit_info' => array(),
-        );
-
-    /**
-     * 运行 status 命令时用于保存结果的文件名
-     * @var string
-     */
-    protected static $_statisticsFile = '';
-
-    /**
-     * 设置worker number 处理器数量
-     * @var int
-     */
-    public $count = 1;
-
-    /*
-     * 生成的回调方法
-     */
-    public $callbacks = array();
-
-    // 服务器类型
-    public $type;
-
-    public $mode = SWOOLE_PROCESS;
-
-
-    /**
-     * 运行所有worker实例
-     * @return void
-     */
-    public function runAll()
+    static function listen( $socket_name = '', $config = array() )
     {
-        // 初始化环境变量
-        self::init();
-        // 解析命令
-        self::parseCommand();
+        if ( class_exists( '\\swoole_server', FALSE ) ) {
+            if ( !isset( $this ) ) {
+                $obj = new self( $socket_name, $config );
+            } else {
+                $obj = $this;// 实际可能没什么用,因为根本没实现多个监听服务器
+            }
+
+            Worker::$listen[] = $socket_name;
+
+            return $obj;
+
+        } else {
+            echo Console::render( "<bg=red>Error must install php swoole extended model</>" ) . "\n";
+            die;
+        }
+    }
+
+    // 目前这个容器只能运行一个swoole的服务器对象,因此多了也没用~
+    function __construct( $socket_name = '', $config = array( 'server' => array() ) )
+    {
+        // 这类给个默认配置,方便查询使用,也算个例子
+        $default_server_config = array(
+            'reactor_num'     => 2,// reactor线程数,一般设置为CPU核数的1-4倍 ---http://wiki.swoole.com/wiki/page/281.html
+            'worker_num'      => 1,//设置启动的worker进程数 ---http://wiki.swoole.com/wiki/page/275.html
+            'max_request'     => 500,//设置worker进程的最大任务数 ---http://wiki.swoole.com/wiki/page/300.html
+            //            'max_conn'                 => '',//服务器程序，最大允许的连接数,超过服务器会拒绝 ---http://wiki.swoole.com/wiki/page/282.html
+            'task_worker_num' => 2,//配置task进程的数量 ---http://wiki.swoole.com/wiki/page/276.html
+            //            'task_ipc_mode' => '',//设置task进程与worker进程之间通信的方式。---http://wiki.swoole.com/wiki/page/296.html
+            //            'task_max_request' => '',//设置task进程的最大任务数 ---http://wiki.swoole.com/wiki/page/295.html
+            //            'task_tmpdir' => '',//设置task的数据临时目录 ---http://wiki.swoole.com/wiki/page/314.html
+            //                        'dispatch_mode' => 2,//数据包分发策略。 ---http://wiki.swoole.com/wiki/page/277.html
+            //            'message_queue_key' => '',//设置消息队列的KEY ---http://wiki.swoole.com/wiki/page/346.html
+            'daemonize'       => 0,//后台守护进程 1开启守护 ---http://wiki.swoole.com/wiki/page/278.html
+            //            'backlog' => '',//Listen队列长度 ---http://wiki.swoole.com/wiki/page/279.html
+            //            'log_file'                 => '',//默认会打印到屏幕。---http://wiki.swoole.com/wiki/page/280.html
+            //            'heartbeat_check_interval' => '',//启用心跳检测 ---http://wiki.swoole.com/wiki/page/283.html
+            //            'heartbeat_idle_time'      => '',//表示连接最大允许空闲的时间 ---http://wiki.swoole.com/wiki/page/284.html
+            //            'open_eof_check'          => false,//打开EOF检测 ---http://wiki.swoole.com/wiki/page/285.html
+            //            'open_eof_split'          => "",//启用EOF自动分包 ---http://wiki.swoole.com/wiki/page/421.html
+            //            'package_eof'             => "\r\n",//设置EOF字符串 ---http://wiki.swoole.com/wiki/page/286.html
+            //            'open_length_check'       => TRUE,//打开包长检测特性 ---http://wiki.swoole.com/wiki/page/287.html
+            //            'package_length_type'     => '',//长度值的类型 ---http://wiki.swoole.com/wiki/page/463.html
+            //            'package_max_length'      => '',//设置最大数据包尺寸 ---http://wiki.swoole.com/wiki/page/301.html
+            //            'open_cpu_affinity'       => '',//启用CPU亲和性设置 ---http://wiki.swoole.com/wiki/page/315.html
+            //            'cpu_affinity_ignore'     => '',//IO密集型程序中 ---http://wiki.swoole.com/wiki/page/429.html
+            //            'open_tcp_nodelay'        => '',//启用open_tcp_nodelay ---http://wiki.swoole.com/wiki/page/316.html
+            //            'tcp_defer_accept'        => '',//启用tcp_defer_accept特性 ---http://wiki.swoole.com/wiki/page/317.html
+            //            'ssl_cert_file'           => '',//设置SSL隧道加密 ---http://wiki.swoole.com/wiki/page/318.html
+            //            'ssl_key_file'=>'',//设置SSL隧道加密
+            //            'user'                    => 'apache',//设置worker/task子进程的所属用户 ---http://wiki.swoole.com/wiki/page/370.html
+            //            'group'                   => '',//设置worker/task子进程的进程用户组 ---http://wiki.swoole.com/wiki/page/371.html
+            //            'chroot'                  => '/data/server/',//定向Worker进程的文件系统根目录 ---http://wiki.swoole.com/wiki/page/392.html
+            //            'pipe_buffer_size'        => '',// 调整管道通信的内存缓存区长度 ---http://wiki.swoole.com/wiki/page/439.html
+            //            'buffer_output_size'      => '',//数据发送缓存区 ---http://wiki.swoole.com/wiki/page/440.html
+            //            'enable_unsafe_event'     => TRUE,//启用onConnect/onClose事件 ---http://wiki.swoole.com/wiki/page/448.html
+            //            'discard_timeout_request' => TRUE,//表示如果worker进程收到了已关闭连接的数据请求，将自动丢弃。
+        );
+//        var_dump($config);
+        if ( empty( $config ) ) {
+            $server_config = $default_server_config;
+        } else {
+            $server_config = array_merge( $default_server_config, $config[ 'server' ] );
+        }
+        $merge_config = array(
+            'server' => $server_config,
+        );
+        $this->config = $merge_config;
+//        var_dump($this->config);
+
+        if ( !isset( $this->config[ 'server' ][ 'pid_file' ] ) ) {
+            $backtrace = debug_backtrace();
+            self::$start_file = $backtrace[ count( $backtrace ) - 1 ][ 'file' ];
+            $this->config[ 'server' ][ 'pid_file' ] = sys_get_temp_dir() . "/WOS_" . str_replace( '/', '_', self::$start_file ) . ".pid";
+        }
+
+        $this->pid_file = $this->config[ 'server' ][ 'pid_file' ];
+
+
+    }
+
+    /**
+     * 这里通过魔术方法来处理callback的设置
+     *
+     **/
+    function __set( $property, $value )
+    {
+        if ( strpos( $property, 'on' ) !== FALSE ) {
+            // 处理绑定的on事件
+            $name = strtolower( ltrim( $property, 'on' ) );
+            $this->events[ $name ] = $value;
+        }
+    }
+
+    function run()
+    {
+        // 首先处理命令
+        $this->parseCommand();
         //根据配置选择并初始化worker对象
-        $this->initWorkers();
-        //设置运行参数
-        $this->setParams();
+        foreach ( self::$listen as $listen ) {
+            $this->initWorkers( $listen );
+        }
+
         //设置回调
         $this->setCallbacks();
-        // 展示启动界面
-        self::displayUI();
-        //启动服务器
-        self::$_globalStatistics[ 'start_timestamp' ] = time();
-        $this->server->start();
 
+
+        self::$server->set( $this->config[ 'server' ] );// 仅加载针对server的配置
+
+
+        //显示命令行状态
+        $this->displayUI();
+        self::$server->status_interval = self::$status_interval;
+        self::$server->start_file = self::$start_file;
+
+
+        self::$server->start();
     }
-
-    /**
-     * worker构造函数
-     *
-     * @param string $socket_name
-     * @param array  $context_option
-     */
-    public function __construct( $socket_name = '', $context_option = array() )
-    {
-        // 获得实例化文件路径，用于自动加载设置根目录
-        $backrace = debug_backtrace();
-        $this->_appInitPath = dirname( $backrace[ 0 ][ 'file' ] );
-
-        // 设置socket上下文
-        if ( $socket_name ) {
-            self::$socketName = $socket_name;
-
-        }
-
-
-    }
-
-    /**
-     * 初始化一些环境变量
-     * @return void
-     */
-    public static function init()
-    {
-        // 如果没设置$pidFile，则生成默认值
-        if ( empty( self::$pidFile ) ) {
-            $backtrace = debug_backtrace();
-            self::$_startFile = $backtrace[ count( $backtrace ) - 1 ][ 'file' ];
-            self::$pidFile = sys_get_temp_dir() . "/workerOnSwoole." . str_replace( '/', '_', self::$_startFile ) . ".pid";
-        }
-        // 没有设置日志文件，则生成一个默认值
-        if ( empty( self::$logFile ) ) {
-            self::$logFile = __DIR__ . '/tmp/workeOnSwoole.log';
-        }
-        // 标记状态为启动中
-        self::$_status = self::STATUS_STARTING;
-        // 启动时间戳
-        self::$_globalStatistics[ 'start_timestamp' ] = time();
-        // 设置status文件位置
-        self::$_statisticsFile = sys_get_temp_dir() . '/workerOnSwoole.status';
-
-        // 尝试设置进程名称（需要php>=5.5或者安装了proctitle扩展）
-//        self::setProcessTitle('WorkerMan: master process  start_file=' . self::$_startFile);
-
-    }
-
 
     /**
      * 解析运行命令
      * php yourfile.php start | stop | restart | reload | status
      * @return void
      */
-    public static function parseCommand()
+    public function parseCommand()
     {
         // 检查运行命令的参数
         global $argv;
         $start_file = $argv[ 0 ];
+        $base_name = basename( $argv[ 0 ] );
+
         if ( !isset( $argv[ 1 ] ) ) {
-            exit( "Usage: php yourfile.php {start|stop|restart|reload|status}\n" );
+            echo Console::alert( "Usage: php " . $base_name . " {start|stop|restart|reload|status}" ) . "\n";
+            exit();
         }
 
         // 命令
@@ -252,49 +186,49 @@ class Worker
 //未实现        self::log("Workerman[$start_file] $command $mode");
 
         // 检查主进程是否在运行
-        $master_pid = @file_get_contents( self::$pidFile );
+        $master_pid = @file_get_contents( $this->pid_file );
         $master_is_alive = $master_pid && @posix_kill( $master_pid, 0 );
         if ( $master_is_alive ) {
             if ( $command === 'start' ) {
-                echo "WOS[$start_file] is running";
+                echo Console::alert( "WorkerOnSwoole [$start_file] is already running" ) . "\n";
                 exit( 0 );
 //                self::log ("Workerman[$start_file] is running");
             }
         } elseif ( $command !== 'start' && $command !== 'restart' ) {
-            echo "WOS[$start_file] not run";
+            echo Console::error( "WorkerOnSwoole [$start_file] not run" ) . "\n";
 //            self::log ("Workerman[$start_file] not run");
+            exit( 0 );
         }
-
         // 根据命令做相应处理
         switch ( $command ) {
             // 启动 workerman
             case 'start':
                 if ( $command2 === '-d' ) {
-                    Worker::$daemonize = TRUE;
+                    $this->config[ 'server' ][ 'daemonize' ] = 1;
                 }
                 break;
             // 显示 workerman 运行状态 - 暂时没想到办法起作用
             case 'status':
-//                var_dump($master_pid);
-                // 尝试删除统计文件，避免脏数据
-//                if(is_file(self::$_statisticsFile))
-//                {
-//                    @unlink(self::$_statisticsFile);
-//                }
-//                // 向主进程发送 SIGUSR2 信号 ，然后主进程会向所有子进程发送 SIGUSR2 信号
-                //所有进程收到 SIGUSR2 信号后会向 $_statisticsFile 写入自己的状态
-//                posix_kill ($master_pid, SIGUSR2);
-//                // 睡眠100毫秒，等待子进程将自己的状态写入$_statisticsFile指定的文件
-//                usleep (100000);
-//                // 展示状态
-//                readfile (self::$_statisticsFile);
-                exit( 0 );
+                // 由定时器产生,定时写入服务器状态
+
+                $state_file = sys_get_temp_dir() . "/WOS_status_" . str_replace( '/', '_', self::$start_file ) . ".pid";
+                $data = file_get_contents( $state_file );
+                $data = json_decode( $data, TRUE );
+                $base_name = basename( $start_file );
+                $ui = Console::table()->setSlice( '  ' )->td4( '<bg=lightBlue>' . $base_name . '</>', 'center' )->br( '-' )
+                    ->td( "Swoole vension:", 'right' )->td( SWOOLE_VERSION )->td( "PHP version:", 'right' )->td( PHP_VERSION )->br()
+                    ->td( "Server start at:", 'right' )->td( date( 'Y-m-d H:i:s', $data[ 'start_time' ] ), 'left' )->td( 'Connection num:', 'right' )->td( $data[ 'connection_num' ] )->br()
+                    ->td( "Accept count:", 'right' )->td( $data[ 'accept_count' ], 'left' )->td( 'Close count:', 'right' )->td( $data[ 'close_count' ] )->br()
+                    ->td( "Tasking num:", 'right' )->td( $data[ 'tasking_num' ], 'left' )->td( 'Request count:', 'right' )->td( $data[ 'request_count' ] )->br()
+                    ->td( "Worker request count:", 'right' )->td( $data[ 'worker_request_count' ], 'left' )->td( 'Task process num:', 'right' )->td( $data[ 'task_process_num' ] )->br();
+                exit( PHP_EOL . $ui . PHP_EOL );
             // 重启 workerman
             case 'restart':
                 // 停止 workeran
             case 'stop':
-                echo "Server is shutdown now!\n";
+                echo Console::info( "Server is shutdown now!" ) . "\n";
                 posix_kill( $master_pid, SIGTERM );
+                posix_kill( $master_pid + 1, SIGTERM );
                 sleep( 5 );
                 posix_kill( $master_pid, 9 );// 如果是不是守护进程,这里最后发送个强制停止的信号.
                 if ( $command == 'stop' ) {
@@ -302,17 +236,17 @@ class Worker
                     // 如果是restart ,那么继续执行后续逻辑,会再起一个进程
                 }
 
-                echo "Server is restart now! \n";
+                echo Console::info( "Server is restart now! " ) . "\n";
                 break;
             // 平滑重启 workerman
             case 'reload':
-                echo "Server worker reload now! \n";
+                echo Console::info( "Server worker reload now! " ) . "\n";
                 posix_kill( $master_pid, SIGUSR1 );//重启worker进程,可以测试装载功能
-//                posix_kill ($master_pid, SIGUSR2);//1.7.7+仅重启task_worker进程
                 exit;
             // 未知命令
             default :
-                exit( "Usage: php yourfile.php {start|stop|restart|reload|status}\n" );
+                echo Console::alert( "Usage: php " . $base_name . " {start|stop|restart|reload|status}" ) . "\n";
+                exit();
         }
     }
 
@@ -320,14 +254,11 @@ class Worker
      * 根据配置初始化worker对象
      * @throws Exception
      */
-    public function initWorkers()
+    public function initWorkers( $listen )
     {
 
-        if ( !self::$socketName ) {
-            return;
-        }
         // 获得应用层通讯协议以及监听的地址
-        $url = parse_url( self::$socketName );
+        $url = parse_url( $listen );
 
         if ( !isset( $url[ 'scheme' ] ) ) {
             throw new Exception( "scheme not exist" );
@@ -339,52 +270,56 @@ class Worker
             throw new Exception( "port not exist" );
         }
 
+
         // 如果有指定应用层协议，则检查对应的协议类是否存在
         if ( $url ) {
+            self::$type = strtolower( $url[ 'scheme' ] );
+
             switch ( strtolower( $url[ 'scheme' ] ) ) {
                 case 'ws':
                 case 'wss':
-                    if ( $this->server ) {
-                        if ( $this->type == "ws" || $this->type == "wss" ) {
-                            $this->server->addListener( $url[ 'host' ], $url[ 'port' ] );
-                        } else {
-                            throw new \Exception( $this->type . " server didn't support add " . $url[ 'scheme' ] . " scheme" );
-                        }
+                    if ( self::$server ) {
+                        self::$server->addListener( $url[ 'host' ], $url[ 'port' ], SWOOLE_SOCK_TCP );
                     } else {
-                        $this->server = new \swoole_websocket_server( $url[ 'host' ], $url[ 'port' ], $this->mode );
-                        $this->type = strtolower( $url[ 'scheme' ] );
+                        self::$server = new \swoole_websocket_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
                     }
                     break;
                 case 'http':
                 case 'https':
-                    if ( $this->server ) {
-                        if ( $this->type == "http" || $this->type == "https" ) {
-                            $this->server->addListener( $url[ 'host' ], $url[ 'port' ] );
-                        } else {
-                            throw new \Exception( $this->type . " server didn't support add " . $url[ 'scheme' ] . " scheme" );
-                        }
+                    if ( self::$server ) {
+                        self::$server->addListener( $url[ 'host' ], $url[ 'port' ], SWOOLE_SOCK_TCP );
                     } else {
-                        $this->server = new \swoole_http_server( $url[ 'host' ], $url[ 'port' ], $this->mode );
-                        $this->type = strtolower( $url[ 'scheme' ] );
+                        self::$server = new \swoole_http_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
                     }
                     break;
                 case 'tcp':
                 case 'tcp4':
+                    $type = SWOOLE_SOCK_TCP;
+                    break;
                 case 'tcp6':
-                case 'unix':
-                    if ( $this->server ) {
-                        if ( $this->type == "socket" ) {
-                            $this->server->addListener( $url );
-                        } else {
-                            throw new \Exception( $this->type . " server didn't support add " . $url[ 'scheme' ] . " scheme" );
-                        }
-                    } else {
-                        $this->server = new \Hprose\Swoole\Socket\Server( $url, $this->mode );
-                        $this->type = "socket";
-                    }
+                    $type = SWOOLE_SOCK_TCP6;
+                    break;
+                case 'udp':
+                case 'udp4':
+                    $type = SWOOLE_SOCK_UDP;
+                    break;
+                case 'udp6':
+                    $type = SWOOLE_SOCK_UDP6;
+                case
+                'unix':
+                    $type = SWOOLE_UNIX_DGRAM;//未实现
+
                     break;
                 default:
-                    throw new \Exception( "Only support ws, wss, http, https, tcp, tcp4, tcp6 or unix scheme" );
+                    throw new \Exception( "Only support ws, wss, http, https, tcp, udp or unix scheme" );
+            }
+            // 统一处理socket
+            if ( isset( $type ) ) {
+                if ( self::$server ) {
+                    self::$server->addListener( $url[ 'host' ], $url[ 'port' ], $type );
+                } else {
+                    self::$server = new \swoole_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS, $type );
+                }
             }
         } else {
             throw new \Exception( "Can't parse this url: " . $url );
@@ -402,131 +337,495 @@ class Worker
         $methods = get_class_methods( $user_event );
         // 没办法了.既然使用 __call动态加载不行,那么暂时能想到的只能是遍历event对象中所有on开头的方法,都注册过来!
         foreach ( $methods as $event ) {
-            if ( strpos( $event, 'on' ) === 0 ){
+            if ( strpos( $event, 'on' ) === 0 ) {
                 // 还是直接处理吧....
                 $name = strtolower( ltrim( $event, 'on' ) );
 //                var_dump($user_event->on);die;
-//                $this->server->on( $name , array( $user_event, $event ) );
-                $this->callbacks[$name] = array($user_event , $event);
+//                self::$server->on( $name , array( $user_event, $event ) );
+                $this->events[ $name ] = array( $user_event, $event );
             }
         }
 
         $this->user_event = $user_event;
     }
 
-    /**
-     * 根据配置项目,对服务器对象进行设置运行参数
-     */
-    public function setParams()
-    {
-        // 很多,回头都写在这里,方便开发者掉用
-        $config = array(
-            'worker_num' => $this->count,
-            'daemonize'  => self::$daemonize,
-            'chroot'     => '/tmp/root',
-        );
-
-        $this->server->set( $config );
-    }
-
-    /**
-     * 这里通过魔术方法来处理callback的设置
-     *
-     **/
-    function __set( $property, $value )
-    {
-        if ( strpos( $property, 'on' ) !== FALSE ) {
-            // 处理绑定的on事件
-            $name = strtolower( ltrim( $property, 'on' ) );
-            $this->callbacks[ $name ] = $value;
-        }
-
-    }
-
-    /**
-     * 设定之前注册的回调函数
-     */
+    // 设定回调和注入用户自定义Events
     function setCallbacks()
     {
-        // 注册下基础的callback,如果另外又改写了,那么就覆盖掉默认的
+        $version = explode( '.', SWOOLE_VERSION );
 
-        $this->server->on( 'start', array( $this, 'onStart' ) );
 
-        $this->server->on( 'shutdown', array( $this, 'onShutDown' ) );
-
-        $this->server->on( 'workerstart', array( $this, 'onWorkerStart' ) );
-
-        $this->server->on( 'workerstop', array( $this, 'onWorkerStop' ) );
-
-        //加载外部自定义事件
-        foreach ( $this->callbacks as $env => $func ) {
-            $this->server->on( $env, $func );
+        // server基本事件
+        self::$server->on( 'Start', array( $this, 'onStart' ) );
+        self::$server->on( 'Shutdown', array( $this, 'onShutdown' ) );
+        self::$server->on( 'ManagerStart', array( $this, 'onManagerStart' ) );
+        self::$server->on( 'ManagerStop', array( $this, 'onManagerStop' ) );
+        self::$server->on( 'WorkerStart', array( $this, 'onWorkerStart' ) );
+        self::$server->on( 'WorkerStop', array( $this, 'onWorkerStop' ) );
+//        self::$server->on( 'Timer', array( $this, 'onTimer' ) );// 已经不这么用了
+        self::$server->on( 'Connect', array( $this, 'onConnect' ) );
+        self::$server->on( 'Receive', array( $this, 'onReceive' ) );
+//        if(self::$type == 'udp' || self::$type == 'udps'){
+        //1.7.18以上版本
+//            self::$server->on( 'Packet', array( $this, 'onPacket' ) );
+//        }
+        self::$server->on( 'Close', array( $this, 'onClose' ) );
+        self::$server->on( 'Task', array( $this, 'onTask' ) );
+        self::$server->on( 'Finish', array( $this, 'onFinish' ) );
+        self::$server->on( 'PipeMessage', array( $this, 'onPipeMessage' ) );
+        self::$server->on( 'WorkerError', array( $this, 'onWorkerError' ) );
+        // WebSocketServer事件
+        if ( self::$type == 'ws' || self::$type == 'wss' ) {
+            // onHandShank和onOpen不能并存
+//            self::$server->on( 'HandShank', array( $this, 'onHandShake' ) );
+            self::$server->on( 'Open', array( $this, 'onOpen' ) );
+            self::$server->on( 'Message', array( $this, 'onMessage' ) );
+        }
+        // HttpServer和websocket通用事件
+        if ( in_array( self::$type, array( 'http', 'https', 'ws', 'wss' ) ) ) {
+            self::$server->on( 'Request', array( $this, 'onRequest' ) );
         }
 
-        unset( $this->callbacks );//注册后就没用了.释放内存
-    }
 
-    //主进程启动事件,和worker进程启动,没先后顺序
-    function onStart( $server )
-    {
-        Worker::$_masterPid = $server->master_pid;
-        if ( FALSE === @file_put_contents( Worker::$pidFile, Worker::$_masterPid ) ) {
-            throw new Exception( 'can not save pid to ' . Worker::$pidFile );
-        }
-
-        echo "master  is running at : {$server->master_pid} \n";
-        echo "manager is running at : {$server->manager_pid} \n";
-    }
-
-    //Server结束时发生
-    //强制kill进程不会回调onShutdown，如kill -9
-    //需要使用kill -15来发送SIGTREM信号到主进程才能按照正常的流程终止
-    function onShutDown( $server )
-    {
-        @unlink( self::$pidFile );
-        echo "master is stoped.. \n";
-    }
-
-    function onWorkerStart( $server, $worker_id )
-    {
-        // 据文档说,如果reload,那么只有在这里require的文件reload才能重新加载.
-        // 加载所有Applications/*/start.php，以便启动所有服务
-        //    foreach(glob(__DIR__.'/Applications/*/start*.php') as $start_file)
-        //    {
-        //        require_once $start_file;
-        //    }
-        global $argv;// 全局变量中包含参数
-        echo "worker - {$argv[0]} is running at: {$server->worker_pid} \n";
-    }
-
-    function onWorkerStop( $server, $worker_id )
-    {
-
-        echo "worker - {$server->worker_pid} is stoped..  \n";
     }
 
     /**
      * 展示启动界面
      * @return void
      */
-    protected static function displayUI()
+    protected function displayUI()
     {
-        echo "\033[1A\n\033[K-----------------------\033[47;30m WORKERONSWOOLE \033[0m-----------------------------\n\033[0m";
-        echo 'Workerman version:', Worker::VERSION, "          PHP version:", PHP_VERSION, "\n";
-        echo 'Swoole version:', swoole_version(), "\n";
-        $listen = self::$socketName;
-        echo "Server listen  {$listen}\n";
+        $listen = self::$listen;
+        global $argv;
+        $base_name = basename( $argv[ 0 ] );
 
-        if ( self::$daemonize ) {
-            global $argv;
-            $start_file = $argv[ 0 ];
-            echo "Input \"php $start_file stop\" to quit. Start success.\n";
+        $ui = Console::table()->setSlice( '  ' )->br( '-' )->td4( '<bg=lightBlue>WorkerOnSwoole</>', 'center' )->br( '-' )
+            ->td( "WorkerServer version:", 'right' )->td( self::VERSION )->td( "PHP version:", 'right' )->td( PHP_VERSION )->br()
+            ->td( "Swoole version:", 'right' )->td( SWOOLE_VERSION, 'left' )->td2( '' )->br();
+        foreach ( $listen as $value ) {
+            $ui->td( "Server listen:", 'right' )->td( $value )->td2( '' )->br();
+        }
+        $ui->td( "Server file:", 'right' )->td( $base_name )->td2( '' )->br( '-' )
+            ->td4( "<bg=lightBlue>WORKERS</>", 'center' )->br( '-' );
+
+        if ( isset( $this->config[ 'server' ][ 'daemonize' ] ) && $this->config[ 'server' ][ 'daemonize' ] == 1 ) {
+            $start_file = $base_name;
+            $ui->td4( "Input \"php $start_file stop\" to quit. Start success.\n" )->br( ' ' );
         } else {
-            echo "Press Ctrl-C to quit.\n";
+            $ui->td4( "Press Ctrl-C to quit." )->br( ' ' );
         }
 
-        echo "------------------------\033[47;30m WORKERS \033[0m-------------------------------\n";
+        echo $ui;
     }
 
+    //----------------------按照WorkerMan-GateWay包装功能,本质是将swoole转换一下方便理解使用---------------------------------
+    //广播
+    static function sendToAll( $send_data, $client_id_array = array() )
+    {
+        $clients = self::$server->connections;//这个是TCP下可用的连接迭代器对象
+        if ( self::$type == 'udp' || self::$type == 'udp4' ) {
+            echo 'function only for tcp' . PHP_EOL;
+
+            return FALSE;
+        }
+        if ( self::$type == 'ws' || self::$type == 'wss' ) {
+            foreach ( $clients as $fd ) {
+                // 这里需要判断server的type,tcp udp 用send .ws用push httpServer就根本用不到这个
+                self::$server->push( $fd, $send_data );//
+            }
+        } elseif ( method_exists( self::$server, 'send' ) ) {
+
+            foreach ( $clients as $fd ) {
+                self::$server->send( $fd, $send_data );// sw服务,请使用push像客户端发送数据,send有问题
+            }
+        }
+
+        return TRUE;
+    }
+
+    // 单播
+    static function sendToClient( $client_id, $send_data )
+    {
+        if ( self::$type == 'ws' || self::$type == 'wss' ) {
+            self::$server->push( $client_id, $send_data );//
+        } elseif ( method_exists( self::$server, 'send' ) ) {
+            self::$server->send( $client_id, $send_data );// sw服务,请使用push像客户端发送数据,send有问题
+        }
+
+        return TRUE;
+    }
+
+    //sendToCurrentClient 未实现,似乎没啥用
+
+    //服务器主动关闭连接
+    static function closeClient( $client_id )
+    {
+        return self::$server->close( $client_id );
+    }
+    //closeCurrentClient 未实现
+
+    // 是否在线
+    static function isOnline( $client_id )
+    {
+        return self::$server->exist( $client_id );
+    }
+
+    //获取全部在线客户端
+    static function getOnlineStatus()
+    {
+        return self::$server->connections;
+    }
+
+    //将client_id与uid绑定，以便通过sendToUid发送数据,每个客户端只允许执行一次,未测试
+    static function bindUid( $client_id, $uid )
+    {
+        return self::$server->bind( $client_id, $uid );
+    }
+
+    // 向配置的uid发送消息
+    static function sendToUid( $uid, $message )
+    {
+        if ( self::$type == 'ws' || self::$type == 'wss' ) {
+            return self::$server->push( $uid, $message );//sw服务,请使用push像客户端发送数据,send有问题
+        } elseif ( method_exists( self::$server, 'send' ) ) {
+            return self::$server->send( $uid, $message );//
+        }
+    }
+
+    //----------------------------------服务器基本事件--------------------------------------------------------------------
+    /**
+     * Server启动在主进程的主线程回调此函数
+     * @param $server
+     */
+    function onStart( $server )
+    {
+        global $argv;
+        $base_name = basename( $argv[ 0 ] );
+        echo Console::success( "[{$base_name }]: master  process is running at : {$server->master_pid} " ) . "\n";
+        echo Console::success( "[{$base_name }]: manager process is running at : {$server->manager_pid} " ) . "\n";
+
+        if ( !empty( $this->config[ 'server' ][ 'pid_file' ] ) ) {
+            file_put_contents( $this->pid_file, $server->master_pid );
+        }
+
+        // 记录服务器状态
+        $server->tick( $server->status_interval, function () use ( $server ) {
+            $state_file = sys_get_temp_dir() . "/WOS_status_" . str_replace( '/', '_', $server->start_file ) . ".pid";
+            $status = $server->stats();
+            file_put_contents( $state_file, json_encode( $status ) );
+        } );
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onStart' ) ) {
+            $this->user_event->onStart( $server );
+        }
+
+    }
+
+
+    /**
+     * 此事件在Server结束时发生
+     * @param $server
+     */
+    function onShutdown( $server )
+    {
+        if ( !empty( $this->config[ 'server' ][ 'pid_file' ] ) ) {
+            unlink( $this->pid_file );
+        }
+        global $argv;
+        $base_name = basename( $argv[ 0 ] );
+        echo Console::info( "[{$base_name}]: master process is stoped.. " ) . "\n";
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onShutdown' ) ) {
+            $this->user_event->onShutdown( $server );
+        }
+
+    }
+
+    /**
+     * 当管理进程启动时调用它
+     * @param $server
+     */
+    function onManagerStart( $server )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onManagerStart' ) ) {
+            $this->user_event->onManagerStart( $server );
+        }
+
+    }
+
+
+    /**
+     * 当管理进程结束时调用它
+     * @param $server
+     */
+    function onManagerStop( $server )
+    {
+        if ( !empty( $this->config[ 'server' ][ 'pid_file' ] ) ) {
+            unlink( $this->pid_file );
+        }
+        global $argv;
+        $base_name = basename( $argv[ 0 ] );
+        echo Console::info( "[{$base_name}]: manager process is stoped... " ) . "\n";
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onManagerStop' ) ) {
+            $this->user_event->onManagerStop( $server );
+        }
+
+    }
+
+    /**
+     * 此事件在worker进程/task进程启动时发生
+     *
+     * @param $server
+     * @param $worker_id
+     */
+    function onWorkerStart( $server, $worker_id )
+    {
+//        var_dump($server);
+        global $argv;
+        $base_name = basename( $argv[ 0 ] );
+
+        if ( $worker_id >= $server->setting[ 'worker_num' ] ) {
+            Console::setProcessName( 'php ' . $base_name . ': task' );
+            echo Console::success( "[{$base_name}]: task    process is running at : {$server->worker_pid} " ) . "\n";
+        } else {
+            Console::setProcessName( 'php ' . $base_name . ': worker' );
+            echo Console::success( "[{$base_name}]: worker  process is running at : {$server->worker_pid} " ) . "\n";
+        }
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onWorkerStart' ) ) {
+            $this->user_event->onWorkerStart( $server, $worker_id );
+        }
+    }
+
+    /**
+     * 此事件在worker进程终止时发生
+     *
+     * @param $server
+     * @param $worker_id $worker_id和进程PID没有任何关系
+     */
+    function onWorkerStop( $server, $worker_id )
+    {
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onWorkerStop' ) ) {
+            $this->user_event->onWorkerStop( $server, $worker_id );
+        }
+    }
+
+
+    /**
+     * 定时器触发
+     *
+     * @param     $server
+     * @param     $interval
+     */
+//    function onTimer( $server, $interval )
+//    {
+//        // 如果用户也自定义了,那么接着执行用户自定义部分
+//        if ( method_exists( $this->user_event, 'onTimer' ) ) {
+//            $this->user_event->onTimer( $server, $interval );
+//        }
+//    }
+
+    /**
+     * 有新的连接进入时，在worker进程中回调
+     *
+     * @param $server
+     * @param $fd    int   $fd是连接的文件描述符，发送数据/关闭连接时需要此参数
+     * @param $from_id int
+     */
+    function onConnect( $server, $fd, $from_id )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onConnect' ) ) {
+            $this->user_event->onConnect( $server, $fd, $from_id );
+        }
+    }
+
+    /**
+     * 接收到数据时回调此函数
+     *
+     * @param $server
+     * @param $fd
+     * @param $from_id
+     * @param $data
+     * @return mixed
+     */
+    function onReceive( $server, $fd, $from_id, $data )
+    {
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onReceive' ) ) {
+            $this->user_event->onReceive( $server, $fd, $from_id, $data );
+        }
+    }
+
+
+    /**
+     * 接收到UDP数据包时回调此函数
+     *
+     * @param $server
+     * @param $data 收到的数据内容，可能是文本或者二进制内容
+     * @param $client_info array 客户端信息包括address/port/server_socket 3项数据
+     */
+    function  onPacket( $server, $data, $client_info )
+    {
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onPacket' ) ) {
+            $this->user_event->onPacket( $server, $data, $client_info );
+        }
+    }
+
+    /**
+     * TCP客户端连接关闭后，在worker进程中回调此函数。
+     *
+     * @param $server
+     * @param $fd
+     * @param $from_id
+     */
+    function onClose( $server, $fd, $from_id )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onClose' ) ) {
+            $this->user_event->onClose( $server, $fd, $from_id );
+        }
+    }
+
+
+    /**
+     * 在task_worker进程内被调用
+     *
+     * @param $server
+     * @param $task_id
+     * @param $from_id
+     * @param $data
+     */
+    function onTask( $server, $task_id, $from_id, $data )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onTask' ) ) {
+            $this->user_event->onTask( $server, $task_id, $from_id, $data );
+        }
+    }
+
+
+    /**
+     * 当worker进程投递的任务在task_worker中完成时
+     *
+     * @param $server
+     * @param $task_id
+     * @param $data
+     */
+    function  onFinish( $server, $task_id, $data )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onFinish' ) ) {
+            $this->user_event->onFinish( $server, $task_id, $data );
+        }
+
+    }
+
+    /**
+     * 当工作进程收到由sendMessage发送的管道消息时会触发onPipeMessage事件
+     *
+     * @param $server
+     * @param $from_worker_id
+     * @param $message
+     */
+    function onPipeMessage( $server, $from_worker_id, $message )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onFinish' ) ) {
+            $this->user_event->onPipeMessage( $server, $from_worker_id, $message );
+        }
+    }
+
+    /**
+     * 当worker/task_worker进程发生异常后会在Manager进程内回调此函数
+     * @param $server
+     * @param $worker_id
+     * @param $worker_pid
+     * @param $exit_code
+     */
+    function onWorkerError( $server, $worker_id, $worker_pid, $exit_code )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onWorkerError' ) ) {
+            $this->user_event->onWorkerError( $server, $worker_id, $worker_pid, $exit_code );
+        }
+    }
+
+    //-----------------------WebSocket服务事件---------------------------------------------------------------------------
+    /**
+     * WebSocket建立连接后进行握手
+     *
+     * @param $request
+     * @param $response
+     */
+    function onHandShake( $request, $response )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onHandShake' ) ) {
+            $this->user_event->onHandShake( $request, $response );
+        }
+    }
+
+    /**
+     * 当WebSocket客户端与服务器建立连接并完成握手后会回调此函数
+     *
+     * @param $server
+     * @param $request
+     */
+    function onOpen( $server, $request )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onOpen' ) ) {
+            $this->user_event->onOpen( $server, $request );
+        }
+    }
+
+    /**
+     * 当服务器收到来自客户端的数据帧时会回调此函数
+     *
+     * @param                        $server
+     * @param swoole_websocket_frame $frame
+     * swoole_websocket_frame 包含属性
+     * $frame->fd，客户端的socket id，使用$server->push推送数据时需要用到
+     * $frame->data，数据内容，可以是文本内容也可以是二进制数据，可以通过opcode的值来判断
+     * $frame->opcode，WebSocket的OpCode类型，可以参考WebSocket协议标准文档
+     * $frame->finish， 表示数据帧是否完整，一个WebSocket请求可能会分成多个数据帧进行发送
+     *
+     * @return bool
+     */
+    function onMessage( $server, $frame )
+    {
+
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onMessage' ) ) {
+            $this->user_event->onMessage( $server, $frame );
+        }
+    }
+
+    //--------------------------HttpServer------------------------------------------------------------------------------
+    /**
+     * 在收到一个完整的Http请求后，会回调此函数
+     *
+     * @param $request
+     * @param $response
+     */
+    function onRequest( $request, $response )
+    {
+        // 如果用户也自定义了,那么接着执行用户自定义部分
+        if ( method_exists( $this->user_event, 'onRequest' ) ) {
+            $this->user_event->onRequest( $request, $response );
+        }
+    }
 
 }

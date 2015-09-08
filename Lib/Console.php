@@ -406,30 +406,18 @@ class Console
         return $return;
     }
 
-    /**
-     * 改变进程的用户ID
-     * @param $user
-     */
-    static function changeUser( $user )
-    {
-        if ( !function_exists( 'posix_getpwnam' ) ) {
-            trigger_error( __METHOD__ . ": require posix extension." );
-
-            return;
-        }
-        $user = posix_getpwnam( $user );
-        if ( $user ) {
-            posix_setuid( $user[ 'uid' ] );
-            posix_setgid( $user[ 'gid' ] );
-        }
-    }
 
     /**
-     * 设置进程的名称
+     * 设置进程名称
      * @param $name
+     * @return bool
      */
     static function setProcessName( $name )
     {
+        if(PHP_OS == 'Darwin'){
+            // mac os 系统不允许修改进程名
+            return FALSE;
+        }
         if ( function_exists( 'cli_set_process_title' ) ) {
             cli_set_process_title( $name );
         } else {

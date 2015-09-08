@@ -7,6 +7,7 @@
  */
 
 namespace Applications\event;
+use WorkerOnSwoole\Worker;
 
 
 class todpole
@@ -19,13 +20,9 @@ class todpole
      */
     public function onOpen($server, $request )
     {
-        $server->push($request->fd ,('{"type":"welcome","id":'.$request->fd.'}'));
+        Worker::sendToClient($request->fd ,('{"type":"welcome","id":'.$request->fd.'}') );
     }
 
-    public function onRequest($request ,$response)
-    {
-        $response->end("<h1>Hello WorkerOnSwoole. #".rand(1000, 9999)."</h1>");
-    }
 
     /**
      * 有消息时
@@ -48,7 +45,7 @@ class todpole
             // 更新用户
             case 'update':
                 // 转播给所有用户
-                $this->sendToAll($server,json_encode(
+                Worker::sendToAll(json_encode(
                     array(
                         'type' => 'update',
                         'id' => $frame->fd,
@@ -70,7 +67,7 @@ class todpole
                     'id'=>$frame->fd,
                     'message'=>$message_data['message'],
                 );
-                $this->sendToAll($server,json_encode($new_message));
+                Worker::sendToAll(json_encode($new_message));
                 return ;
         }
     }
@@ -82,8 +79,7 @@ class todpole
     public function onClose($server, $fd)
     {
         // 广播 xxx 退出了
-
-        $this->sendToAll($server, json_encode(array('type'=>'closed', 'id'=>$fd)));
+        Worker::sendToAll(json_encode(array('type'=>'closed', 'id'=>$fd)));
 
 
     }
@@ -110,12 +106,6 @@ class todpole
         return true;
     }
 
-    public function sendToAll($server,$data){
-        foreach($server->connections as $fd)
-        {
-            $server->push($fd, $data);// sw服务,请使用push像客户端发送数据,send有问题
-        }
-    }
 
 
 }

@@ -21,9 +21,9 @@
         "source": ""
     },
     "require": {
-        "php": ">=5.3",
+        "php": ">=5.4",
         "ext-sockets": "*",
-        "ext-swoole":">=1.7.5"
+        "ext-swoole":">=1.7.16"
     },
     "autoload": {
         "psr-4": {"Workerman\\": "./"}
