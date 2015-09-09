@@ -3,11 +3,11 @@
 $client = new swoole_client(SWOOLE_SOCK_UDP, SWOOLE_SOCK_ASYNC);
 $client->on("connect", function(swoole_client $cli) {
     echo "connect";
-    $cli->send("GET / HTTP/1.1\r\n\r\n");
+    $cli->send("Hello \n");
 });
 $client->on("receive", function(swoole_client $cli, $data){
     echo "Receive: $data";
-    $cli->send(str_repeat('A', 100)."\n");
+    $cli->send(str_repeat('A', 10)."\n");
     sleep(1);
 });
 $client->on("error", function(swoole_client $cli){

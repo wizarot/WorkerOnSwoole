@@ -8,7 +8,6 @@
 
 namespace WorkerOnSwoole;
 
-use \WorkerOnSwoole\Worker;
 use WorkerOnSwoole\lib\Console;
 
 /**
@@ -61,7 +60,7 @@ class GateWay
             }, FALSE );
 
             $pid = $process->start();
-            sleep( 1 );//少等下再继续
+            sleep( 1 );//稍等下再继续
         }
 
         \swoole_process::wait();//防止出现僵尸进程

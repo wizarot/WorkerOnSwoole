@@ -19,6 +19,8 @@ use WorkerOnSwoole\lib\Console;
  */
 class Worker
 {
+    // Worker的实例
+    public static $instance;
     // 实际swoole的server对象(实际是传入的protocol对象)
     public static $server;
     // 每隔555毫秒向文件中写入服务器状态数据,由于定时器时间值不能重复因此可根据需要微调
@@ -43,10 +45,11 @@ class Worker
     static function listen( $socket_name = '', $config = array() )
     {
         if ( class_exists( '\\swoole_server', FALSE ) ) {
-            if ( !isset( $this ) ) {
+            if ( !isset( Worker::$instance ) ) {
                 $obj = new self( $socket_name, $config );
+                self::$instance = $obj;
             } else {
-                $obj = $this;// 实际可能没什么用,因为根本没实现多个监听服务器
+                $obj = self::$instance;// 实际可能没什么用,因为根本没实现多个监听服务器
             }
 
             Worker::$listen[] = $socket_name;
@@ -220,7 +223,8 @@ class Worker
                     ->td( "Server start at:", 'right' )->td( date( 'Y-m-d H:i:s', $data[ 'start_time' ] ), 'left' )->td( 'Connection num:', 'right' )->td( $data[ 'connection_num' ] )->br()
                     ->td( "Accept count:", 'right' )->td( $data[ 'accept_count' ], 'left' )->td( 'Close count:', 'right' )->td( $data[ 'close_count' ] )->br()
                     ->td( "Tasking num:", 'right' )->td( $data[ 'tasking_num' ], 'left' )->td( 'Request count:', 'right' )->td( $data[ 'request_count' ] )->br()
-                    ->td( "Worker request count:", 'right' )->td( $data[ 'worker_request_count' ], 'left' )->td( 'Task process num:', 'right' )->td( $data[ 'task_process_num' ] )->br();
+                    ->td( "Worker request count:", 'right' )->td( $data[ 'worker_request_count' ], 'left' )->td( 'Task process num:', 'right' )->td( $data[ 'task_process_num' ] )->br()
+                    ->td( "Master PID:", 'right' )->td( $data[ 'master_pid' ], 'left' )->td( 'Manager PID:', 'right' )->td( $data[ 'manager_pid' ] )->br();
                 exit( PHP_EOL . $ui . PHP_EOL );
             // 重启 workerman
             case 'restart':
@@ -290,6 +294,7 @@ class Worker
                         self::$server->addListener( $url[ 'host' ], $url[ 'port' ], SWOOLE_SOCK_TCP );
                     } else {
                         self::$server = new \swoole_http_server( $url[ 'host' ], $url[ 'port' ], SWOOLE_PROCESS );
+//                        self::$server->setGlobal(HTTP_GLOBAL_ALL);
                     }
                     break;
                 case 'tcp':
@@ -410,7 +415,8 @@ class Worker
 
         if ( isset( $this->config[ 'server' ][ 'daemonize' ] ) && $this->config[ 'server' ][ 'daemonize' ] == 1 ) {
             $start_file = $base_name;
-            $ui->td4( "Input \"php $start_file stop\" to quit. Start success.\n" )->br( ' ' );
+            $ui->td4( "Input \"php $start_file status\" to get server status.  \n" )->br( ' ' );
+            $ui->td4( "Input \"php $start_file stop\"   to quit. Start success.\n" )->br( ' ' );
         } else {
             $ui->td4( "Press Ctrl-C to quit." )->br( ' ' );
         }
@@ -512,6 +518,11 @@ class Worker
         $server->tick( $server->status_interval, function () use ( $server ) {
             $state_file = sys_get_temp_dir() . "/WOS_status_" . str_replace( '/', '_', $server->start_file ) . ".pid";
             $status = $server->stats();
+            // 增加记录服务器各进程
+            $status['master_pid'] = $server->master_pid;
+            $status['manager_pid'] = $server->manager_pid;
+            //woker随时会变化,因此用处不大
+
             file_put_contents( $state_file, json_encode( $status ) );
         } );
 
@@ -611,6 +622,9 @@ class Worker
      */
     function onWorkerStop( $server, $worker_id )
     {
+        global $argv;
+        $base_name = basename( $argv[ 0 ] );
+        echo Console::info( "[{$base_name}]: worker process is stoped.. " ) . "\n";
 
         // 如果用户也自定义了,那么接着执行用户自定义部分
         if ( method_exists( $this->user_event, 'onWorkerStop' ) ) {
