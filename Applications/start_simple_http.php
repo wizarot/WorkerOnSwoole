@@ -19,9 +19,11 @@ use Applications\event\httpEvent;
 $config = array(
     'server' => array(
         'daemonize' => 0,//是否为后台守护进程
+        'worker_num'=> 4,
     ),
 );
-$server = Worker::listen('http://0.0.0.0:9501', $config);
-Worker::listen('http://127.0.0.1:9502');
-$server->setEvent(new httpEvent());
+$server = Worker::listen( 'http://0.0.0.0:9501', $config );
+$server->setEvent( new httpEvent() );
+$server->addRoot( 'www.test.com', __DIR__ . '/web/' );
+$server->addRoot( '127.0.0.1:9501', __DIR__ . '/web/todpole/' );
 $server->run();

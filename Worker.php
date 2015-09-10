@@ -27,6 +27,10 @@ class Worker
     public static $status_interval = 555;
     // 记录下监听的IP端口和业务
     public static $listen = array();
+    // web服务器设定域名对应文件夹
+    public $web_root = array(
+                            '127.0.0.1:8080' => "/tmp/",
+                        );
     // 用户自定义的Event事件-实际的逻辑
     public $user_event;
     // 临时注册事件,用来记录事件名称的变量
@@ -60,6 +64,15 @@ class Worker
             echo Console::render( "<bg=red>Error must install php swoole extended model</>" ) . "\n";
             die;
         }
+    }
+
+    // web服务器,配置域名和业务目录
+    function addRoot( $host, $dir )
+    {
+        $this->web_root[ $host ] = $dir;
+        // 任何需要超全局传递的固定参数,都可以这样用.但要注意别互相覆盖了
+        global $php;
+        $php[ 'web_root' ] = $this->web_root;
     }
 
     // 目前这个容器只能运行一个swoole的服务器对象,因此多了也没用~
@@ -511,7 +524,8 @@ class Worker
         echo Console::success( "[{$base_name }]: manager process is running at : {$server->manager_pid} " ) . "\n";
 
         if ( !empty( $this->config[ 'server' ][ 'pid_file' ] ) ) {
-            file_put_contents( $this->pid_file, $server->master_pid );
+            //增加写独占锁
+            file_put_contents( $this->pid_file, $server->master_pid, LOCK_EX );
         }
 
         // 记录服务器状态
@@ -519,11 +533,10 @@ class Worker
             $state_file = sys_get_temp_dir() . "/WOS_status_" . str_replace( '/', '_', $server->start_file ) . ".pid";
             $status = $server->stats();
             // 增加记录服务器各进程
-            $status['master_pid'] = $server->master_pid;
-            $status['manager_pid'] = $server->manager_pid;
+            $status[ 'master_pid' ] = $server->master_pid;
+            $status[ 'manager_pid' ] = $server->manager_pid;
             //woker随时会变化,因此用处不大
-
-            file_put_contents( $state_file, json_encode( $status ) );
+            file_put_contents( $state_file, json_encode( $status ), LOCK_EX );
         } );
 
         // 如果用户也自定义了,那么接着执行用户自定义部分
