@@ -40,7 +40,7 @@ class Worker
     // 业务配置信息
     public $config = array( 'server' => array() );
     // 服务容器的版本号
-    const  VERSION = '0.0.6';
+    const  VERSION = '0.0.9';
     // pid 存储文件
     protected $pid_file;
     // 业务主入口文件名
