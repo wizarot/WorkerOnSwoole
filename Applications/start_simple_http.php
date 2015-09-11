@@ -22,8 +22,8 @@ $config = array(
         'worker_num'=> 4,
     ),
 );
-$server = Worker::listen( 'http://0.0.0.0:9501', $config );
+$server = Worker::listen( 'http://192.168.30.93:9501', $config );
 $server->setEvent( new httpEvent() );
-$server->addRoot( 'www.test.com', __DIR__ . '/web/' );
-$server->addRoot( '127.0.0.1:9501', __DIR__ . '/web/todpole/' );
+//$server->addRoot( 'www.test.com', __DIR__ . '/web/' );
+$server->addRoot( '192.168.30.93:9501', __DIR__ . '/web/todpole/' );
 $server->run();

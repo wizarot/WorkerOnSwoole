@@ -2,8 +2,6 @@
 
 namespace WorkerOnSwoole;
 
-// 包含常量定义文件
-require_once __DIR__ . '/lib/Constants.php';
 
 /**
  * 自动加载类

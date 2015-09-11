@@ -20,6 +20,6 @@ $config = array(
         'daemonize' => 0,
     ),
 );
-$server = Worker::listen('ws://127.0.0.1:9503', $config);
+$server = Worker::listen('ws://192.168.30.93:9503', $config);
 $server->setEvent(new todpole());
 $server->run();

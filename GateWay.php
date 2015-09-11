@@ -23,6 +23,7 @@ class GateWay
     public static $app_dir = 'Applications';
     public static $dir     = __DIR__;
     public static $command;
+    public static $daemonize;
 
     public function __construct( $config = FALSE )
     {
@@ -37,6 +38,8 @@ class GateWay
         }
 
         self::$command = $argv[ 1 ];
+        $command2 = isset( $argv[ 2 ] ) ? $argv[ 2 ] : '';
+        self::$daemonize = $command2 ;
 
         if ( isset( $config[ 'applications' ] ) ) {
             self::$app_dir = $config[ 'applications' ];
@@ -55,8 +58,9 @@ class GateWay
         // 加载所有Applications/*/start.php，以便启动所有服务
         foreach ( glob( self::$app_dir . '/start*.php' ) as $start_file ) {
             $command = self::$command;
-            $process = new \swoole_process( function ( \swoole_process $worker ) use ( $start_file, $command ) {
-                $worker->exec( self::$bin, array( $start_file, $command ) );
+            $daemonize = self::$daemonize;
+            $process = new \swoole_process( function ( \swoole_process $worker ) use ( $start_file, $command ,$daemonize ) {
+                $worker->exec( self::$bin, array( $start_file, $command ,$daemonize ) );
             }, FALSE );
 
             $pid = $process->start();
