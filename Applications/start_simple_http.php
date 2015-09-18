@@ -18,8 +18,8 @@ use Applications\event\httpEvent;
 // 做个例子,实际处理静态请求最好还是用nginx,复杂的php没测试不知道会不会有问题
 $config = array(
     'server' => array(
-        'daemonize' => 0,//是否为后台守护进程
-        'worker_num'=> 4,
+        'daemonize'  => 0,//是否为后台守护进程
+        'worker_num' => 4,
     ),
 );
 $server = Worker::listen( 'http://192.168.30.93:9501', $config );

@@ -29,8 +29,8 @@ class Worker
     public static $listen = array();
     // web服务器设定域名对应文件夹
     public $web_root = array(
-                            '127.0.0.1:8080' => "/tmp/",
-                        );
+        '127.0.0.1:8080' => "/tmp/",
+    );
     // 用户自定义的Event事件-实际的逻辑
     public $user_event;
     // 临时注册事件,用来记录事件名称的变量
@@ -116,15 +116,17 @@ class Worker
             //            'discard_timeout_request' => TRUE,//表示如果worker进程收到了已关闭连接的数据请求，将自动丢弃。
         );
 //        var_dump($config);
-        if ( empty( $config ) ) {
+        if ( !isset( $config['server'] ) ) {
             $server_config = $default_server_config;
         } else {
             $server_config = array_merge( $default_server_config, $config[ 'server' ] );
         }
-        $merge_config = array(
-            'server' => $server_config,
-        );
-        $this->config = $merge_config;
+        $config['server'] = $server_config;
+        // 配置写入全局变量中
+        global $php;
+        $php['config'] = $config;
+        // 记录的是关于server的config信息
+        $this->config = $config;
 //        var_dump($this->config);
 
         if ( !isset( $this->config[ 'server' ][ 'pid_file' ] ) ) {

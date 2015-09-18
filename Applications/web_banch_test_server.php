@@ -12,6 +12,7 @@ require_once __DIR__ . '/../Autoloader.php';
 use WorkerOnSwoole\Worker;
 
 // 事件处理对象,实际只需要处理这个即可
+// 简单压力测试功能
 class webServer
 {
     function onRequest($request, $response)
